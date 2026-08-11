@@ -75,7 +75,7 @@ def process_job(
     db.commit()
     db.refresh(job)
 
-    return JobCreated(job_id=job.id, status=job.status, message=f"Job {job.id} accepted and queued")
+    return JobCreated(job_id=job.id, status=job.status, message=f"Job {job.id} accepted for processing")
 
 
 @router.get("", response_model=list[JobOut])

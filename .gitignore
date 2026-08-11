@@ -21,4 +21,7 @@ next-env.d.ts
 *.sqlite3
 
 # OS / editor
-.DS_Storebackend/media/
+.DS_Store
+
+# Media uploads
+backend/media/
