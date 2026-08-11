@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FlaskConical } from "lucide-react";
 
 import { Clip, fetchJobClips, mediaUrl } from "@/lib/api";
 
@@ -57,6 +58,13 @@ export default function JobClips({ jobId }: { jobId: string }) {
               {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
             </p>
             <p className="line-clamp-2 text-xs text-slate-400">{clip.transcript_text}</p>
+            <a
+              href={`/clips/${clip.id}`}
+              className="mt-2 inline-flex items-center gap-1 rounded-md bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700"
+            >
+              <FlaskConical className="h-3 w-3 text-indigo-400" />
+              Open in studio
+            </a>
           </div>
         </article>
       ))}

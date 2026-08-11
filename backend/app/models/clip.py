@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
@@ -26,7 +26,7 @@ class Clip(Base):
     file_path: Mapped[str] = mapped_column(String(2048))
     thumbnail_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     virality_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    suggested_hooks: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    suggested_hooks: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     job: Mapped["Job"] = relationship(back_populates="clips")

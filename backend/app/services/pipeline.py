@@ -3,6 +3,7 @@ from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -10,7 +11,7 @@ from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.job import Job, JobStatus
 from app.services import clips as clips_service
-from app.services import media, transcription
+from app.services import media, minds, transcription
 from app.services.transcription import TranscriptSegment
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,44 @@ def _extract_clips(db: Session, job: Job, source: Path) -> None:
         )
 
 
+def _score_clips(db: Session, job: Job) -> None:
+    """Ask the Mind to score each extracted clip and persist the verdict.
+
+    Scoring is best-effort: missing credentials, API errors, or unparseable
+    responses leave a clip unscored (null fields) rather than failing the
+    job, per ticket 05.
+    """
+    settings = get_settings()
+    clips = db.scalars(
+        select(Clip).where(Clip.job_id == job.id).order_by(Clip.start_time)
+    ).all()
+    if not clips:
+        return
+
+    try:
+        memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
+    except minds.MindsError as exc:
+        logger.info(
+            "Job %s: memory context unavailable, scoring without it: %s", job.id, exc
+        )
+        memory = None
+    memory_context = minds.build_memory_context(memory) if memory else None
+
+    for clip in clips:
+        try:
+            metadata = minds.generate_clip_metadata(
+                clip.transcript_text,
+                duration_seconds=clip.end_time - clip.start_time,
+                memory_context=memory_context,
+            )
+        except minds.MindsError as exc:
+            logger.warning("Job %s: clip %s left unscored: %s", job.id, clip.id, exc)
+            continue
+        clip.virality_score = metadata.virality_score
+        clip.suggested_hooks = metadata.model_dump()
+        logger.info("Job %s: clip %s scored %d/100", job.id, clip.id, clip.virality_score)
+
+
 def run_pipeline(job_id: str) -> None:
     settings = get_settings()
     with get_session_factory()() as db:
@@ -104,6 +143,7 @@ def run_pipeline(job_id: str) -> None:
             job.status = JobStatus.EXTRACTING_CLIPS
             db.commit()
             _extract_clips(db, job, source)
+            _score_clips(db, job)
             job.status = JobStatus.COMPLETED
             db.commit()
             logger.info("Job %s completed with clips extracted", job.id)

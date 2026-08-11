@@ -56,6 +56,18 @@ export type JobCreated = {
   message: string;
 };
 
+export type PlatformHooks = {
+  youtube_shorts: string[];
+  tiktok: string[];
+  x: string[];
+};
+
+export type ClipMetadata = {
+  virality_score: number;
+  suggested_titles: string[];
+  platform_hooks: PlatformHooks;
+};
+
 export type Clip = {
   id: string;
   job_id: string;
@@ -66,7 +78,7 @@ export type Clip = {
   video_url: string;
   thumbnail_url: string | null;
   virality_score: number | null;
-  suggested_hooks: string[] | null;
+  suggested_hooks: ClipMetadata | null;
   created_at: string;
 };
 

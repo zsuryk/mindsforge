@@ -104,7 +104,7 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    from app.services import media, transcription
+    from app.services import media, minds, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
     raw = tmp_path / "raw" / "video.mp4"
@@ -143,6 +143,18 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
     monkeypatch.setattr(media, "cut_clip", fake_cut)
     monkeypatch.setattr(media, "extract_frame_at_timestamp", fake_thumb)
 
+    scored_metadata = minds.ClipMetadata(
+        virality_score=87,
+        suggested_titles=["Watch until the reveal", "I was wrong about this"],
+        platform_hooks={
+            "youtube_shorts": ["Wait for the twist at the end"],
+            "tiktok": ["POV: your boss just found out"],
+            "x": ["Hot take: nobody says this out loud"],
+        },
+    )
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
+    monkeypatch.setattr(minds, "generate_clip_metadata", lambda *args, **kwargs: scored_metadata)
+
     res = test_client.post(
         "/api/v1/jobs/process",
         data={"source_url": "https://example.com/video.mp4", "title": "My video"},
@@ -166,8 +178,16 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
     assert clip["transcript_text"] == "hello world. this is a test."
     assert clip["video_url"] == f"/media/clips/{job_id}/{clip['id']}.mp4"
     assert clip["thumbnail_url"] == f"/media/clips/{job_id}/{clip['id']}.png"
-    assert clip["virality_score"] is None
-    assert clip["suggested_hooks"] is None
+    assert clip["virality_score"] == 87
+    assert clip["suggested_hooks"] == {
+        "virality_score": 87,
+        "suggested_titles": ["Watch until the reveal", "I was wrong about this"],
+        "platform_hooks": {
+            "youtube_shorts": ["Wait for the twist at the end"],
+            "tiktok": ["POV: your boss just found out"],
+            "x": ["Hot take: nobody says this out loud"],
+        },
+    }
     assert cut_args == [(0.0, 3.0)]
     assert thumb_args == [1.0]
 
@@ -178,6 +198,71 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
     detail = test_client.get(f"/api/v1/clips/{clip['id']}")
     assert detail.status_code == 200
     assert detail.json() == clip
+
+
+def test_scoring_failure_leaves_clip_unscored_but_completes_job(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    from app.services import media, minds, transcription
+    from app.services.transcription import Transcription, TranscriptSegment
+
+    raw = tmp_path / "raw" / "video.mp4"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(b"fake media bytes")
+    monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
+    monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
+    monkeypatch.setattr(
+        transcription,
+        "transcribe",
+        lambda audio_path: Transcription(
+            segments=[
+                TranscriptSegment(text="hello world.", start=0.0, end=1.5),
+                TranscriptSegment(text="this is a test.", start=1.5, end=3.0),
+            ],
+            duration_seconds=30.0,
+        ),
+    )
+    monkeypatch.setattr(
+        media,
+        "cut_clip",
+        lambda source, dest, start, end: dest.write_bytes(b"clip bytes") or dest,
+    )
+    monkeypatch.setattr(
+        media,
+        "extract_frame_at_timestamp",
+        lambda source, dest, timestamp: dest.write_bytes(b"png bytes") or dest,
+    )
+    monkeypatch.setattr(
+        minds,
+        "fetch_memory",
+        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+    )
+    monkeypatch.setattr(
+        minds,
+        "generate_clip_metadata",
+        lambda *args, **kwargs: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+    )
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/unscored.mp4"},
+    )
+    assert res.status_code == 202
+    job_id = res.json()["job_id"]
+
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "COMPLETED"
+
+    clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
+    assert len(clips) == 1
+    assert clips[0]["virality_score"] is None
+    assert clips[0]["suggested_hooks"] is None
 
 
 def test_clips_endpoint_404s_for_unknown_job(client: tuple[TestClient, Path]) -> None:
