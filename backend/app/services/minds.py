@@ -21,6 +21,10 @@ class MindsError(RuntimeError):
     pass
 
 
+class MindsConfigError(MindsError):
+    """Raised when Minds credentials are missing from configuration."""
+
+
 class ClipMetadata(BaseModel):
     """Structured verdict returned by the Mind for a single clip."""
 
@@ -40,15 +44,22 @@ class ClipMetadata(BaseModel):
 def _headers() -> dict[str, str]:
     key = get_settings().MINDS_BUILDER_API_KEY
     if not key:
-        raise MindsError("MINDS_BUILDER_API_KEY is not configured")
+        raise MindsConfigError("MINDS_BUILDER_API_KEY is not configured")
     return {BUILDER_API_KEY_HEADER: key}
 
 
 def _agent_id() -> str:
     agent_id = get_settings().MINDS_AGENT_ID
     if not agent_id:
-        raise MindsError("MINDS_AGENT_ID is not configured")
+        raise MindsConfigError("MINDS_AGENT_ID is not configured")
     return agent_id
+
+
+def _decode_json(response: httpx.Response, context: str) -> Any:
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise MindsError(f"{context} returned a non-JSON response") from exc
 
 
 def _get(path: str) -> httpx.Response:
@@ -81,7 +92,10 @@ def fetch_memory(agent_id: str) -> dict[str, Any]:
     response = _get(f"/minds/{agent_id}/memory")
     if response.status_code != 200:
         raise MindsError(f"Memory fetch failed with status {response.status_code}")
-    return response.json()
+    memory = _decode_json(response, "Memory fetch")
+    if not isinstance(memory, dict):
+        raise MindsError("Memory fetch returned an unexpected shape")
+    return memory
 
 
 def update_memory(agent_id: str, key: str, value: Any) -> bool:
@@ -89,7 +103,10 @@ def update_memory(agent_id: str, key: str, value: Any) -> bool:
     response = _post(f"/minds/{agent_id}/memory/update", {"key": key, "value": value})
     if response.status_code != 200:
         raise MindsError(f"Memory update failed with status {response.status_code}")
-    return bool(response.json().get("success"))
+    payload = _decode_json(response, "Memory update")
+    if not isinstance(payload, dict):
+        return False
+    return bool(payload.get("success"))
 
 
 def build_memory_context(memory: dict[str, Any]) -> str:

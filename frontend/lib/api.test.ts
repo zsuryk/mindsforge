@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchClip, fetchJob, fetchJobClips, fetchJobs, mediaUrl, submitJob } from "./api";
+import {
+  fetchAgentMemory,
+  fetchClip,
+  fetchJob,
+  fetchJobClips,
+  fetchJobs,
+  mediaUrl,
+  submitJob,
+  updateAgentMemory,
+} from "./api";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -159,5 +168,63 @@ describe("mediaUrl", () => {
 
   it("passes through absolute URLs unchanged", () => {
     expect(mediaUrl("https://cdn.example.com/clip.mp4")).toBe("https://cdn.example.com/clip.mp4");
+  });
+});
+
+describe("fetchAgentMemory", () => {
+  it("returns agent id and memory tree from GET /agent/memory", async () => {
+    const payload = {
+      agent_id: "agent-1",
+      memory: { brand_voice: "bold", historical_insights: { tiktok: ["fast pacing"] } },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchAgentMemory();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/agent/memory",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    expect(result).toEqual(payload);
+  });
+
+  it("throws the backend detail message on error responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "builder api down" }, 502)),
+    );
+
+    await expect(fetchAgentMemory()).rejects.toThrow("builder api down");
+  });
+});
+
+describe("updateAgentMemory", () => {
+  it("posts key and value and returns true on success", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateAgentMemory("learned_insight", { ctr: 0.03 });
+
+    expect(result).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/agent/memory/update");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ key: "learned_insight", value: { ctr: 0.03 } }));
+  });
+
+  it("returns false when the mind does not report success", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ success: false })));
+
+    expect(await updateAgentMemory("brand_voice", "warm")).toBe(false);
+  });
+
+  it("throws the backend detail message on error responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "request failed: timeout" }, 502)),
+    );
+
+    await expect(updateAgentMemory("k", "v")).rejects.toThrow("request failed: timeout");
   });
 });

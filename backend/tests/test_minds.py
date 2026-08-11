@@ -64,7 +64,40 @@ def test_fetch_memory_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    with pytest.raises(minds.MindsError, match="MINDS_BUILDER_API_KEY"):
+    with pytest.raises(minds.MindsConfigError, match="MINDS_BUILDER_API_KEY"):
+        minds.fetch_memory("agent-1")
+
+
+def test_fetch_memory_requires_agent_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.delenv("MINDS_AGENT_ID", raising=False)
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    with pytest.raises(minds.MindsConfigError, match="MINDS_AGENT_ID"):
+        minds._agent_id()
+
+
+def test_fetch_memory_raises_on_non_json_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_minds(monkeypatch)
+
+    class NonJsonResponse:
+        status_code = 200
+
+        def json(self) -> Any:
+            raise ValueError("expected a JSON body")
+
+    monkeypatch.setattr(minds.httpx, "get", lambda url, headers, timeout: NonJsonResponse())
+    with pytest.raises(minds.MindsError, match="non-JSON"):
+        minds.fetch_memory("agent-1")
+
+
+def test_fetch_memory_raises_on_non_object_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx, "get", lambda url, headers, timeout: FakeResponse([], status_code=200)
+    )
+    with pytest.raises(minds.MindsError, match="unexpected shape"):
         minds.fetch_memory("agent-1")
 
 
@@ -108,6 +141,16 @@ def test_update_memory_returns_false_when_success_missing(
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
         minds.httpx, "post", lambda url, headers, json, timeout: FakeResponse({})
+    )
+    assert minds.update_memory("agent-1", "k", "v") is False
+
+
+def test_update_memory_returns_false_on_non_object_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx, "post", lambda url, headers, json, timeout: FakeResponse("true")
     )
     assert minds.update_memory("agent-1", "k", "v") is False
 

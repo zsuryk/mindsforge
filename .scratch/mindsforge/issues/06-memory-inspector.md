@@ -4,10 +4,18 @@
 
 **Blocked by:** 05 — Minds scoring and clip studio
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Memory read endpoint returns agent id + memory tree; failures (missing key, API down) return a clear error
-- [ ] Memory update endpoint posts an insight key/value and returns success
-- [ ] Memory page: header with brain icon + agent tag, refresh button, insight cards grid
-- [ ] Interactive JSON tree viewer renders the raw memory context with syntax highlighting
-- [ ] Manual update from the UI is visible on next refresh
+- [x] Memory read endpoint returns agent id + memory tree; failures (missing key, API down) return a clear error
+- [x] Memory update endpoint posts an insight key/value and returns success
+- [x] Memory page: header with brain icon + agent tag, refresh button, insight cards grid
+- [x] Interactive JSON tree viewer renders the raw memory context with syntax highlighting
+- [x] Manual update from the UI is visible on next refresh
+
+## Comments
+
+- `GET /agent/memory` → `{agent_id, memory}`; `POST /agent/memory/update` → `{success}` (new `app/api/memory.py`).
+- Error mapping: missing `MINDS_*` config → 503, other Builder API failures → 502, both with a clear detail message; the frontend surfaces them in the page.
+- Insight cards are derived from the memory tree: `brand_voice`, per-platform `historical_insights` items, and `ab_test_history` records carrying a `learned_insight` (`lib/insights.ts`).
+- The JSON tree (`components/json-tree.tsx`) is collapsible per node with syntax-colored tokens; the root starts expanded.
+- The write control parses the value input as JSON when valid, else treats it as text; after a successful write the page re-fetches so the new key appears in the tree immediately.

@@ -145,3 +145,29 @@ export async function submitJob(input: SubmitJobInput): Promise<JobCreated> {
   }
   return res.json();
 }
+
+export type AgentMemory = {
+  agent_id: string;
+  memory: Record<string, unknown>;
+};
+
+export async function fetchAgentMemory(): Promise<AgentMemory> {
+  const res = await fetch(`${API_URL}/agent/memory`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function updateAgentMemory(key: string, value: unknown): Promise<boolean> {
+  const res = await fetch(`${API_URL}/agent/memory/update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  const body = await res.json();
+  return body.success === true;
+}

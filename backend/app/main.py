@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.clips import router as clips_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
+from app.api.memory import router as memory_router
 from app.core.config import get_settings
 from app.db.base import init_db
 
@@ -38,3 +39,4 @@ app.mount(
 app.include_router(health_router, prefix=settings.API_V1_PREFIX, tags=["health"])
 app.include_router(jobs_router, prefix=f"{settings.API_V1_PREFIX}/jobs", tags=["jobs"])
 app.include_router(clips_router, prefix=settings.API_V1_PREFIX, tags=["clips"])
+app.include_router(memory_router, prefix=settings.API_V1_PREFIX, tags=["agent"])
