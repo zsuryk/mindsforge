@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] Jobs table exists (SQLAlchemy model + table creation) with all fields from the spec
-- [ ] Creating a job persists it and returns job id + status; duplicate/submission errors are handled gracefully
-- [ ] Jobs page: submission form (URL or file upload), list of jobs, status badges, polling refresh of job state
-- [ ] Job detail endpoint returns the persisted record
-- [ ] A manually submitted job survives a backend restart (persisted, not in-memory)
+- [x] Jobs table exists (SQLAlchemy model + table creation) with all fields from the spec
+- [x] Creating a job persists it and returns job id + status; duplicate/submission errors are handled gracefully
+- [x] Jobs page: submission form (URL or file upload), list of jobs, status badges, polling refresh of job state
+- [x] Job detail endpoint returns the persisted record
+- [x] A manually submitted job survives a backend restart (persisted, not in-memory)

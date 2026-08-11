@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     DATABASE_URL: str = "sqlite:///./mindsforge.db"
+    MEDIA_DIR: Path = BACKEND_DIR / "media"
     MINDS_BUILDER_API_KEY: str = ""
     MINDS_AGENT_ID: str = ""
     GROQ_API_KEY: str = ""
