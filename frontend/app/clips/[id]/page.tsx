@@ -166,6 +166,7 @@ export default function ClipStudioPage({ params }: { params: { id: string } }) {
       <LaunchAbTestModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
+        clipId={clip.id}
         suggestedTitles={metadata?.suggested_titles ?? []}
       />
     </div>

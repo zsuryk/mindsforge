@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     FFMPEG_BIN: str = "ffmpeg"
     PROCESS_JOBS_ON_SUBMIT: bool = True
+    AB_TEST_INTERVAL_SECONDS: int = 60
+    AB_TEST_VIEW_THRESHOLD: int = 1000
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 

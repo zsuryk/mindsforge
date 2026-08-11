@@ -4,24 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.db.base import get_db
 from app.models.clip import Clip
 from app.models.job import Job
 from app.schemas.clip import ClipOut
+from app.services.media import media_url
 
 router = APIRouter()
-
-
-def _media_url(path: str | None) -> str | None:
-    if not path:
-        return None
-    media_dir = get_settings().MEDIA_DIR.resolve()
-    try:
-        relative = Path(path).resolve().relative_to(media_dir)
-    except ValueError:
-        return None
-    return f"/media/{relative.as_posix()}"
 
 
 def _to_out(clip: Clip) -> ClipOut:
@@ -32,8 +21,8 @@ def _to_out(clip: Clip) -> ClipOut:
         start_time=clip.start_time,
         end_time=clip.end_time,
         transcript_text=clip.transcript_text,
-        video_url=_media_url(clip.file_path) or "",
-        thumbnail_url=_media_url(clip.thumbnail_path),
+        video_url=media_url(clip.file_path) or "",
+        thumbnail_url=media_url(clip.thumbnail_path),
         virality_score=clip.virality_score,
         suggested_hooks=clip.suggested_hooks,
         created_at=clip.created_at,

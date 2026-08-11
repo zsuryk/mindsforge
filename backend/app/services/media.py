@@ -12,6 +12,19 @@ class MediaError(RuntimeError):
     pass
 
 
+def media_url(path: str | None) -> str | None:
+    """Render a stored media path as a servable /media/... URL, or None when
+    the path lives outside the configured media directory."""
+    if not path:
+        return None
+    media_dir = get_settings().MEDIA_DIR.resolve()
+    try:
+        relative = Path(path).resolve().relative_to(media_dir)
+    except ValueError:
+        return None
+    return f"/media/{relative.as_posix()}"
+
+
 def _ffmpeg_bin() -> Path:
     configured = get_settings().FFMPEG_BIN
     found = shutil.which(configured)

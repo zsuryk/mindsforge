@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  fetchAbExperiments,
   fetchAgentMemory,
   fetchClip,
   fetchJob,
   fetchJobClips,
   fetchJobs,
   mediaUrl,
+  startAbTest,
   submitJob,
   updateAgentMemory,
 } from "./api";
@@ -226,5 +228,82 @@ describe("updateAgentMemory", () => {
     );
 
     await expect(updateAgentMemory("k", "v")).rejects.toThrow("request failed: timeout");
+  });
+});
+describe("startAbTest", () => {
+  it("posts clip, platform and titles and returns the created experiment", async () => {
+    const created = {
+      id: "exp-1",
+      clip_id: "clip-1",
+      clip_title: "My clip",
+      platform: "youtube_shorts",
+      status: "ACTIVE",
+      variants: [],
+      winning_variant_id: null,
+      learned_insight: null,
+      created_at: "2026-08-11T10:00:00Z",
+      concluded_at: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(created, 201));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await startAbTest({
+      clipId: "clip-1",
+      platform: "youtube_shorts",
+      titles: ["Title one", "Title two"],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/ab-tests/start");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({
+        clip_id: "clip-1",
+        platform: "youtube_shorts",
+        titles: ["Title one", "Title two"],
+      }),
+    );
+    expect(result).toEqual(created);
+  });
+
+  it("throws the backend detail message on error responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "Clip not found" }, 404)),
+    );
+
+    await expect(
+      startAbTest({ clipId: "nope", platform: "tiktok", titles: ["a", "b"] }),
+    ).rejects.toThrow("Clip not found");
+  });
+});
+
+describe("fetchAbExperiments", () => {
+  it("returns experiments and view threshold from GET /ab-tests/active", async () => {
+    const experiments = [
+      {
+        id: "exp-1",
+        clip_id: "clip-1",
+        clip_title: "My clip",
+        platform: "tiktok",
+        status: "ACTIVE",
+        variants: [],
+        winning_variant_id: null,
+        learned_insight: null,
+        created_at: "2026-08-11T10:00:00Z",
+        concluded_at: null,
+      },
+    ];
+    const payload = { view_threshold: 1000, experiments };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchAbExperiments();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/ab-tests/active",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    expect(result).toEqual(payload);
   });
 });

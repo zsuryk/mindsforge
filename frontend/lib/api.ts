@@ -171,3 +171,59 @@ export async function updateAgentMemory(key: string, value: unknown): Promise<bo
   const body = await res.json();
   return body.success === true;
 }
+
+export type AbExperimentStatus = "ACTIVE" | "CONCLUDED" | "FAILED";
+
+export type AbVariant = {
+  variant_id: string;
+  title: string;
+  thumbnail_url: string | null;
+  ctr: number;
+  views: number;
+};
+
+export type AbExperiment = {
+  id: string;
+  clip_id: string;
+  clip_title: string;
+  platform: string;
+  status: AbExperimentStatus;
+  variants: AbVariant[];
+  winning_variant_id: string | null;
+  learned_insight: string | null;
+  created_at: string;
+  concluded_at: string | null;
+};
+
+export async function startAbTest(input: {
+  clipId: string;
+  platform: string;
+  titles: string[];
+}): Promise<AbExperiment> {
+  const res = await fetch(`${API_URL}/ab-tests/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clip_id: input.clipId,
+      platform: input.platform,
+      titles: input.titles,
+    }),
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export type AbActive = {
+  view_threshold: number;
+  experiments: AbExperiment[];
+};
+
+export async function fetchAbExperiments(): Promise<AbActive> {
+  const res = await fetch(`${API_URL}/ab-tests/active`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
