@@ -12,10 +12,9 @@ AI-driven creator platform: automatically identifies high-converting short clips
 
 ```sh
 cd backend
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+uv sync
 cp .env.example .env   # fill in MINDS_BUILDER_API_KEY / MINDS_AGENT_ID / GROQ_API_KEY
-.venv/bin/python -m app
+uv run python -m app
 ```
 
 Serves `http://localhost:8000` — health check at `/api/v1/health`.
@@ -34,7 +33,7 @@ Serves `http://localhost:3000`. The header shows a live backend status light fed
 ## Tests / typecheck
 
 ```sh
-cd backend && .venv/bin/python -m pytest
+cd backend && uv run python -m pytest
 cd frontend && npm run build   # includes TypeScript strict typecheck
 ```
 
