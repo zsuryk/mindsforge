@@ -20,7 +20,7 @@ def get_engine():
 
 
 def init_db() -> None:
-    from app.models import job  # noqa: F401  register models with Base metadata
+    from app.models import clip, job  # noqa: F401  register models with Base metadata
 
     Base.metadata.create_all(get_engine())
 

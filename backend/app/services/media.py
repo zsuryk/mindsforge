@@ -71,10 +71,70 @@ def extract_audio(source: Path, dest: Path) -> Path:
         "error",
         str(dest),
     ]
+    return _run_ffmpeg(cmd, "audio extraction", source, dest)
+
+
+def _run_ffmpeg(cmd: list[str], action: str, source: Path, dest: Path) -> Path:
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0 or not dest.is_file():
         stderr = result.stderr.strip()
         raise MediaError(
-            f"FFmpeg audio extraction failed for {source}: {stderr or 'unknown error'}"
+            f"FFmpeg {action} failed for {source}: {stderr or 'unknown error'}"
         )
     return dest
+
+
+def cut_clip(source: Path, dest: Path, start: float, end: float) -> Path:
+    """Cut [start, end] from a media file into a re-encoded H.264 MP4.
+
+    Uses fast-seek (-ss before -i). Optional stream maps allow audio-only
+    sources to produce playable clips without a video stream.
+    """
+    cmd = [
+        str(_ffmpeg_bin()),
+        "-y",
+        "-nostdin",
+        "-ss",
+        f"{start:.3f}",
+        "-i",
+        str(source),
+        "-t",
+        f"{max(0.0, end - start):.3f}",
+        "-map",
+        "0:v:0?",
+        "-map",
+        "0:a:0?",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        "-loglevel",
+        "error",
+        str(dest),
+    ]
+    return _run_ffmpeg(cmd, "clip cut", source, dest)
+
+
+def extract_frame_at_timestamp(source: Path, dest: Path, timestamp: float) -> Path:
+    """Capture a single PNG frame from a media file at the given timestamp."""
+    cmd = [
+        str(_ffmpeg_bin()),
+        "-y",
+        "-nostdin",
+        "-ss",
+        f"{timestamp:.3f}",
+        "-i",
+        str(source),
+        "-frames:v",
+        "1",
+        "-loglevel",
+        "error",
+        str(dest),
+    ]
+    return _run_ffmpeg(cmd, "frame extraction", source, dest)

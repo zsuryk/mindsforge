@@ -138,4 +138,48 @@ describe("JobsPage", () => {
     expect(await screen.findByText(/2 segments/)).toBeInTheDocument();
     expect(screen.getByText(/30.0s/)).toBeInTheDocument();
   });
+
+  it("shows extracted clips with a playable video preview for completed jobs", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([makeJob({ status: "COMPLETED" })]))
+      .mockResolvedValueOnce(
+        jsonResponse([
+          {
+            id: "clip-1",
+            job_id: "job-1",
+            title: "Best moment",
+            start_time: 0,
+            end_time: 3,
+            transcript_text: "hello world.",
+            video_url: "/media/clips/job-1/clip-1.mp4",
+            thumbnail_url: "/media/clips/job-1/clip-1.png",
+            virality_score: null,
+            suggested_hooks: null,
+            created_at: "2026-08-11T10:00:00Z",
+          },
+        ]),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<JobsPage />);
+
+    expect(await screen.findByText("Clips ready")).toBeInTheDocument();
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute("src", "http://localhost:8000/media/clips/job-1/clip-1.mp4");
+    expect(video).toHaveAttribute("poster", "http://localhost:8000/media/clips/job-1/clip-1.png");
+    expect(await screen.findByText("Best moment")).toBeInTheDocument();
+    expect(screen.getByText("hello world.")).toBeInTheDocument();
+  });
+
+  it("does not fetch clips for jobs that are not completed", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([makeJob({ status: "FAILED" })]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<JobsPage />);
+
+    await screen.findByText("FAILED");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

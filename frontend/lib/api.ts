@@ -1,6 +1,14 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 export const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
 
+export function mediaUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) {
+    return path;
+  }
+  const origin = API_URL.replace(/\/api\/v1\/?$/, "");
+  return `${origin}${path}`;
+}
+
 export type HealthStatus = {
   status: "ok" | "degraded" | "down";
   service: string;
@@ -48,6 +56,20 @@ export type JobCreated = {
   message: string;
 };
 
+export type Clip = {
+  id: string;
+  job_id: string;
+  title: string;
+  start_time: number;
+  end_time: number;
+  transcript_text: string;
+  video_url: string;
+  thumbnail_url: string | null;
+  virality_score: number | null;
+  suggested_hooks: string[] | null;
+  created_at: string;
+};
+
 export type SubmitJobInput = {
   title?: string;
   sourceUrl?: string;
@@ -77,6 +99,22 @@ export async function fetchJobs(): Promise<Job[]> {
 
 export async function fetchJob(id: string): Promise<Job> {
   const res = await fetch(`${API_URL}/jobs/${id}`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function fetchJobClips(jobId: string): Promise<Clip[]> {
+  const res = await fetch(`${API_URL}/jobs/${jobId}/clips`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function fetchClip(id: string): Promise<Clip> {
+  const res = await fetch(`${API_URL}/clips/${id}`, { cache: "no-store" });
   if (!res.ok) {
     throw await extractError(res);
   }

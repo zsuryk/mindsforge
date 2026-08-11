@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchJob, fetchJobs, submitJob } from "./api";
+import { fetchClip, fetchJob, fetchJobClips, fetchJobs, mediaUrl, submitJob } from "./api";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -64,8 +64,7 @@ describe("fetchJob", () => {
   });
 });
 
-describe("submitJob", () => {
-  it("posts a source url as form data and returns the created job", async () => {
+describe("submitJob", () => {  it("posts a source url as form data and returns the created job", async () => {
     const created = { job_id: "abc", status: "PENDING", message: "Job abc accepted" };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(created, 202));
     vi.stubGlobal("fetch", fetchMock);
@@ -105,5 +104,60 @@ describe("submitJob", () => {
     await expect(submitJob({ sourceUrl: "https://example.com/v.mp4" })).rejects.toThrow(
       "A job for this URL is already being processed",
     );
+  });
+});
+
+function clipFromBackend() {
+  return {
+    id: "clip-1",
+    job_id: "job-1",
+    title: "Best moment",
+    start_time: 0,
+    end_time: 3,
+    transcript_text: "hello world.",
+    video_url: "/media/clips/job-1/clip-1.mp4",
+    thumbnail_url: "/media/clips/job-1/clip-1.png",
+    virality_score: null,
+    suggested_hooks: null,
+    created_at: "2026-08-11T10:00:00Z",
+  };
+}
+
+describe("fetchJobClips", () => {
+  it("returns clips for a job from GET /jobs/{id}/clips", async () => {
+    const clips = [clipFromBackend()];
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(clips));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchJobClips("job-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/jobs/job-1/clips",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    expect(result).toEqual(clips);
+  });
+});
+
+describe("fetchClip", () => {
+  it("returns a clip from GET /clips/{id}", async () => {
+    const clip = clipFromBackend();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(clip)));
+
+    const result = await fetchClip("clip-1");
+
+    expect(result).toEqual(clip);
+  });
+});
+
+describe("mediaUrl", () => {
+  it("prefixes relative media paths with the API origin", () => {
+    expect(mediaUrl("/media/clips/job-1/clip-1.mp4")).toBe(
+      "http://localhost:8000/media/clips/job-1/clip-1.mp4",
+    );
+  });
+
+  it("passes through absolute URLs unchanged", () => {
+    expect(mediaUrl("https://cdn.example.com/clip.mp4")).toBe("https://cdn.example.com/clip.mp4");
   });
 });

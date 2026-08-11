@@ -1,11 +1,15 @@
 from datetime import datetime, timezone
 from enum import Enum
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import JSON, DateTime, Enum as SAEnum, Float, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.clip import Clip
 
 
 class JobStatus(str, Enum):
@@ -47,4 +51,8 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    clips: Mapped[list["Clip"]] = relationship(
+        back_populates="job", cascade="all, delete-orphan", passive_deletes=True
     )

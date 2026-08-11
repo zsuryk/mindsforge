@@ -8,8 +8,8 @@ from app.services.transcription import Transcription, TranscriptSegment
 from fastapi.testclient import TestClient
 
 FAKE_SEGMENTS = [
-    TranscriptSegment(text="hello world", start=0.0, end=1.5),
-    TranscriptSegment(text="this is a test", start=1.5, end=3.0),
+    TranscriptSegment(text="hello world.", start=0.0, end=1.5),
+    TranscriptSegment(text="this is a test.", start=1.5, end=3.0),
 ]
 
 
@@ -22,14 +22,18 @@ def _stub_pipeline_stages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Pa
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
-    wav = tmp_path / "audio.wav"
-    wav.write_bytes(b"fake wav bytes")
     monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
     monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
     monkeypatch.setattr(
         transcription,
         "transcribe",
         lambda audio_path: Transcription(segments=FAKE_SEGMENTS, duration_seconds=30.0),
+    )
+    monkeypatch.setattr(media, "cut_clip", lambda source, dest, start, end: dest.write_bytes(b"clip") or dest)
+    monkeypatch.setattr(
+        media,
+        "extract_frame_at_timestamp",
+        lambda source, dest, timestamp: dest.write_bytes(b"png") or dest,
     )
     return raw
 
@@ -50,18 +54,18 @@ def test_url_job_transitions_downloading_then_transcribing_and_persists_transcri
     job_id = res.json()["job_id"]
 
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
-    assert job["status"] == "TRANSCRIBING"
+    assert job["status"] == "COMPLETED"
     assert job["duration_seconds"] == 30.0
     assert job["transcript_segments"] == [
-        {"text": "hello world", "start": 0.0, "end": 1.5},
-        {"text": "this is a test", "start": 1.5, "end": 3.0},
+        {"text": "hello world.", "start": 0.0, "end": 1.5},
+        {"text": "this is a test.", "start": 1.5, "end": 3.0},
     ]
     saved_raw = Path(job["file_path"])
     assert saved_raw.name == "video.mp4"
     assert saved_raw.is_relative_to(tmp_path / "raw")
 
 
-def test_url_job_visits_downloading_status_before_transcribing(
+def test_url_job_visits_downloading_and_extracting_clips_statuses(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -82,12 +86,25 @@ def test_url_job_visits_downloading_status_before_transcribing(
             statuses_seen.append(job.status.value)
         return raw
 
+    def fake_cut_clip(source: Path, dest: Path, start: float, end: float) -> Path:
+        with get_session_factory()() as db:
+            job = db.scalar(select(Job).where(Job.file_path == str(source)))
+            statuses_seen.append(job.status.value)
+        dest.write_bytes(b"clip")
+        return dest
+
     monkeypatch.setattr(media, "download_video", fake_download)
     monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
     monkeypatch.setattr(
         transcription,
         "transcribe",
         lambda audio_path: Transcription(segments=FAKE_SEGMENTS, duration_seconds=10.0),
+    )
+    monkeypatch.setattr(media, "cut_clip", fake_cut_clip)
+    monkeypatch.setattr(
+        media,
+        "extract_frame_at_timestamp",
+        lambda source, dest, timestamp: dest.write_bytes(b"png") or dest,
     )
 
     res = test_client.post(
@@ -96,9 +113,9 @@ def test_url_job_visits_downloading_status_before_transcribing(
     )
     job_id = res.json()["job_id"]
 
-    assert statuses_seen == ["DOWNLOADING"]
+    assert statuses_seen == ["DOWNLOADING", "EXTRACTING_CLIPS"]
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
-    assert job["status"] == "TRANSCRIBING"
+    assert job["status"] == "COMPLETED"
 
 
 def test_upload_job_skips_download_and_uses_uploaded_file(
@@ -118,9 +135,9 @@ def test_upload_job_skips_download_and_uses_uploaded_file(
     job_id = res.json()["job_id"]
 
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
-    assert job["status"] == "TRANSCRIBING"
+    assert job["status"] == "COMPLETED"
     assert Path(job["file_path"]).name.endswith("upload.mp4")
-    assert job["transcript_segments"][0]["text"] == "hello world"
+    assert job["transcript_segments"][0]["text"] == "hello world."
 
 
 def test_stage_failure_marks_job_failed_and_stops_pipeline(

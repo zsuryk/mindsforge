@@ -1,13 +1,62 @@
 import logging
 from dataclasses import asdict
 from pathlib import Path
+from uuid import uuid4
+
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.base import get_session_factory
+from app.models.clip import Clip
 from app.models.job import Job, JobStatus
+from app.services import clips as clips_service
 from app.services import media, transcription
+from app.services.transcription import TranscriptSegment
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_clips(db: Session, job: Job, source: Path) -> None:
+    """Split the transcript into candidates, cut each into an MP4 with a
+    thumbnail frame, and persist a Clip record per candidate."""
+    settings = get_settings()
+    segments = [
+        TranscriptSegment(**segment) for segment in (job.transcript_segments or [])
+    ]
+    candidates = clips_service.build_clip_candidates(segments)
+    if not candidates:
+        logger.info("Job %s: no clip candidates from transcript", job.id)
+        return
+
+    clips_dir = settings.MEDIA_DIR / "clips" / job.id
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    for candidate in candidates:
+        clip = Clip(
+            id=str(uuid4()),
+            job_id=job.id,
+            title=candidate.title,
+            start_time=candidate.start,
+            end_time=candidate.end,
+            transcript_text=candidate.transcript_text,
+        )
+        video_path = clips_dir / f"{clip.id}.mp4"
+        thumbnail_path = clips_dir / f"{clip.id}.png"
+        media.cut_clip(source, video_path, candidate.start, candidate.end)
+        thumbnail_timestamp = candidate.start + min(
+            1.0, (candidate.end - candidate.start) / 2
+        )
+        media.extract_frame_at_timestamp(source, thumbnail_path, thumbnail_timestamp)
+        clip.file_path = str(video_path)
+        clip.thumbnail_path = str(thumbnail_path)
+        db.add(clip)
+        logger.info(
+            "Job %s: cut clip %s [%.1fs, %.1fs] -> %s",
+            job.id,
+            clip.id,
+            candidate.start,
+            candidate.end,
+            video_path,
+        )
 
 
 def run_pipeline(job_id: str) -> None:
@@ -17,6 +66,7 @@ def run_pipeline(job_id: str) -> None:
         if job is None:
             logger.warning("Job %s not found; skipping pipeline", job_id)
             return
+        job.error_message = None
         try:
             if job.source_url:
                 job.status = JobStatus.DOWNLOADING
@@ -50,6 +100,13 @@ def run_pipeline(job_id: str) -> None:
                 len(result.segments),
                 result.duration_seconds,
             )
+
+            job.status = JobStatus.EXTRACTING_CLIPS
+            db.commit()
+            _extract_clips(db, job, source)
+            job.status = JobStatus.COMPLETED
+            db.commit()
+            logger.info("Job %s completed with clips extracted", job.id)
         except Exception as exc:  # noqa: BLE001 - any stage failure fails the job
             db.rollback()
             job = db.get(Job, job_id)

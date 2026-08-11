@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 
+import JobClips from "@/components/job-clips";
 import { Job, JobStatus, fetchJobs, submitJob } from "@/lib/api";
 
 const BADGE_CLASSES: Record<JobStatus, string> = {
@@ -145,24 +146,31 @@ export default function JobsPage() {
         ) : (
           <ul className="divide-y divide-slate-800 rounded-xl border border-slate-800 bg-slate-900">
             {jobs.map((job) => (
-              <li key={job.id} className="flex items-center justify-between gap-4 px-5 py-4">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-100">{job.title}</p>
-                  <p className="truncate text-xs text-slate-500">
-                    {job.source_url ?? job.file_path ?? "—"}
-                  </p>
-                  {job.status === "FAILED" && job.error_message && (
-                    <p className="mt-1 truncate text-xs text-red-400">{job.error_message}</p>
-                  )}
-                  {job.status === "TRANSCRIBING" &&
-                    job.transcript_segments &&
-                    job.transcript_segments.length > 0 && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        {job.transcript_segments.length} segments · {job.duration_seconds?.toFixed(1)}s
-                      </p>
+              <li key={job.id} className="divide-y divide-slate-800">
+                <div className="flex items-center justify-between gap-4 px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-100">{job.title}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {job.source_url ?? job.file_path ?? "—"}
+                    </p>
+                    {job.status === "FAILED" && job.error_message && (
+                      <p className="mt-1 truncate text-xs text-red-400">{job.error_message}</p>
                     )}
+                    {job.status === "TRANSCRIBING" &&
+                      job.transcript_segments &&
+                      job.transcript_segments.length > 0 && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {job.transcript_segments.length} segments ·{" "}
+                          {job.duration_seconds?.toFixed(1)}s
+                        </p>
+                      )}
+                    {job.status === "COMPLETED" && (
+                      <p className="mt-1 text-xs text-slate-500">Clips ready</p>
+                    )}
+                  </div>
+                  <StatusBadge status={job.status} />
                 </div>
-                <StatusBadge status={job.status} />
+                {job.status === "COMPLETED" && <JobClips jobId={job.id} />}
               </li>
             ))}
           </ul>
