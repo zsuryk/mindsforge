@@ -4,6 +4,7 @@ import {
   fetchAbExperiments,
   fetchAgentMemory,
   fetchClip,
+  fetchDashboardStats,
   fetchJob,
   fetchJobClips,
   fetchJobs,
@@ -305,5 +306,35 @@ describe("fetchAbExperiments", () => {
       expect.objectContaining({ cache: "no-store" }),
     );
     expect(result).toEqual(payload);
+  });
+});
+
+describe("fetchDashboardStats", () => {
+  it("returns live aggregates from GET /dashboard/stats", async () => {
+    const stats = {
+      total_clips: 12,
+      active_ab_tests: 2,
+      avg_virality: 67.5,
+      total_insights: 4,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(stats));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchDashboardStats();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/dashboard/stats",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    expect(result).toEqual(stats);
+  });
+
+  it("rejects with the backend message when the request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "boom" }, 500)),
+    );
+
+    await expect(fetchDashboardStats()).rejects.toThrow("boom");
   });
 });

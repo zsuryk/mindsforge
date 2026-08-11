@@ -227,3 +227,18 @@ export async function fetchAbExperiments(): Promise<AbActive> {
   }
   return res.json();
 }
+
+export type DashboardStats = {
+  total_clips: number;
+  active_ab_tests: number;
+  avg_virality: number | null;
+  total_insights: number;
+};
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
+  const res = await fetch(`${API_URL}/dashboard/stats`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}

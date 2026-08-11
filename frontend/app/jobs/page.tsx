@@ -4,26 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 
 import JobClips from "@/components/job-clips";
-import { Job, JobStatus, fetchJobs, submitJob } from "@/lib/api";
-
-const BADGE_CLASSES: Record<JobStatus, string> = {
-  PENDING: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-  DOWNLOADING: "bg-sky-500/10 text-sky-300 border-sky-500/30",
-  TRANSCRIBING: "bg-violet-500/10 text-violet-300 border-violet-500/30",
-  EXTRACTING_CLIPS: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30",
-  COMPLETED: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-  FAILED: "bg-red-500/10 text-red-300 border-red-500/30",
-};
-
-function StatusBadge({ status }: { status: JobStatus }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${BADGE_CLASSES[status]}`}
-    >
-      {status}
-    </span>
-  );
-}
+import { StatusBadge } from "@/components/status-badge";
+import { Job, fetchJobs, submitJob } from "@/lib/api";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
