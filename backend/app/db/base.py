@@ -25,9 +25,12 @@ def init_db() -> None:
     Base.metadata.create_all(get_engine())
 
 
+def get_session_factory() -> sessionmaker:
+    return sessionmaker(bind=get_engine(), expire_on_commit=False)
+
+
 def get_db() -> Generator[Session, None, None]:
-    session_factory = sessionmaker(bind=get_engine(), expire_on_commit=False)
-    db = session_factory()
+    db = get_session_factory()()
     try:
         yield db
     finally:

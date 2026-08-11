@@ -20,6 +20,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     file_path: null,
     status: "PENDING",
     duration_seconds: null,
+    transcript_segments: null,
     error_message: null,
     created_at: "2026-08-11T10:00:00Z",
     updated_at: "2026-08-11T10:00:00Z",
@@ -102,5 +103,39 @@ describe("JobsPage", () => {
       vi.advanceTimersByTime(5000);
     });
     expect(screen.getByText("COMPLETED")).toBeInTheDocument();
+  });
+
+  it("shows the pipeline error message for failed jobs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse([
+        makeJob({ status: "FAILED", error_message: "network down" }),
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<JobsPage />);
+
+    expect(await screen.findByText("network down")).toBeInTheDocument();
+  });
+
+  it("shows segment count and duration for transcribed jobs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse([
+        makeJob({
+          status: "TRANSCRIBING",
+          transcript_segments: [
+            { text: "hello world", start: 0, end: 1.5 },
+            { text: "still going", start: 1.5, end: 3 },
+          ],
+          duration_seconds: 30,
+        }),
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<JobsPage />);
+
+    expect(await screen.findByText(/2 segments/)).toBeInTheDocument();
+    expect(screen.getByText(/30.0s/)).toBeInTheDocument();
   });
 });

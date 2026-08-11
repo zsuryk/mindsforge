@@ -24,6 +24,7 @@ describe("fetchJobs", () => {
         status: "PENDING",
         duration_seconds: null,
         error_message: null,
+        transcript_segments: null,
         created_at: "2026-08-11T10:00:00Z",
         updated_at: "2026-08-11T10:00:00Z",
       },
@@ -51,6 +52,7 @@ describe("fetchJob", () => {
       status: "PENDING",
       duration_seconds: null,
       error_message: null,
+      transcript_segments: null,
       created_at: "2026-08-11T10:00:00Z",
       updated_at: "2026-08-11T10:00:00Z",
     };

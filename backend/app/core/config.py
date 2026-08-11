@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     MINDS_BUILDER_API_KEY: str = ""
     MINDS_AGENT_ID: str = ""
     GROQ_API_KEY: str = ""
+    FFMPEG_BIN: str = "ffmpeg"
+    PROCESS_JOBS_ON_SUBMIT: bool = True
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 

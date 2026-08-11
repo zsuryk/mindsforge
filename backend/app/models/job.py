@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum as SAEnum, Float, String
+from sqlalchemy import JSON, DateTime, Enum as SAEnum, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -42,6 +42,7 @@ class Job(Base):
         nullable=False,
     )
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    transcript_segments: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

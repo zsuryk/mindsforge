@@ -23,6 +23,12 @@ export type JobStatus =
   | "COMPLETED"
   | "FAILED";
 
+export type TranscriptSegment = {
+  text: string;
+  start: number;
+  end: number;
+};
+
 export type Job = {
   id: string;
   title: string;
@@ -30,6 +36,7 @@ export type Job = {
   file_path: string | null;
   status: JobStatus;
   duration_seconds: number | null;
+  transcript_segments: TranscriptSegment[] | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;

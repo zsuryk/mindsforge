@@ -1,7 +1,16 @@
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,6 +18,7 @@ from app.core.config import get_settings
 from app.db.base import get_db
 from app.models.job import IN_PROGRESS_STATUSES, Job
 from app.schemas.job import JobCreated, JobOut
+from app.services.pipeline import run_pipeline
 
 router = APIRouter()
 
@@ -32,6 +42,7 @@ def _validate_source_url(source_url: str) -> None:
 
 @router.post("/process", status_code=status.HTTP_202_ACCEPTED, response_model=JobCreated)
 def process_job(
+    background_tasks: BackgroundTasks,
     source_url: str | None = Form(default=None),
     title: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
@@ -74,6 +85,9 @@ def process_job(
 
     db.commit()
     db.refresh(job)
+
+    if get_settings().PROCESS_JOBS_ON_SUBMIT:
+        background_tasks.add_task(run_pipeline, job.id)
 
     return JobCreated(job_id=job.id, status=job.status, message=f"Job {job.id} accepted for processing")
 

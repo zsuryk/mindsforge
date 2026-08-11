@@ -14,6 +14,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Te
     media_dir = tmp_path / "media"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("MEDIA_DIR", str(media_dir))
+    monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "false")
     get_settings.cache_clear()
     get_engine.cache_clear()
 

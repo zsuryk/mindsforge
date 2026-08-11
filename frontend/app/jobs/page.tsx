@@ -151,6 +151,16 @@ export default function JobsPage() {
                   <p className="truncate text-xs text-slate-500">
                     {job.source_url ?? job.file_path ?? "—"}
                   </p>
+                  {job.status === "FAILED" && job.error_message && (
+                    <p className="mt-1 truncate text-xs text-red-400">{job.error_message}</p>
+                  )}
+                  {job.status === "TRANSCRIBING" &&
+                    job.transcript_segments &&
+                    job.transcript_segments.length > 0 && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {job.transcript_segments.length} segments · {job.duration_seconds?.toFixed(1)}s
+                      </p>
+                    )}
                 </div>
                 <StatusBadge status={job.status} />
               </li>
