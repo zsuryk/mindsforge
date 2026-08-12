@@ -17,16 +17,6 @@ VIEWS_PER_SWEEP_MAX = 40
 LATENT_CTR_MIN = 0.01
 LATENT_CTR_MAX = 0.10
 
-PLATFORM_LABELS = {
-    "youtube_shorts": "YouTube Shorts",
-    "tiktok": "TikTok",
-    "x": "X",
-}
-
-
-def platform_label(platform: str) -> str:
-    return PLATFORM_LABELS.get(platform, platform.replace("_", " ").title())
-
 
 def _latent_ctr(variant_id: str) -> float:
     """Deterministic per-variant true click-through rate (fraction, 1%–10%)."""
@@ -54,49 +44,49 @@ def _simulate_sweep(variant: dict[str, object], rng: random.Random) -> None:
     variant["ctr"] = round(clicks / views * 100.0, 2) if views else 0.0
 
 
-def generate_learned_insight(experiment: AbExperiment) -> str:
-    """Natural-language summary of why the winning variant won."""
-    variants = experiment.variants or []
-    winner = next(
-        (v for v in variants if v.get("variant_id") == experiment.winning_variant_id),
-        None,
-    )
-    if winner is None:
-        return (
-            f"The {platform_label(experiment.platform)} experiment concluded with no "
-            "recorded winner variant."
-        )
-    ranked = sorted(variants, key=lambda v: float(v.get("ctr") or 0.0), reverse=True)
-    runner_up = ranked[1] if len(ranked) > 1 else None
-    total_views = sum(int(v.get("views") or 0) for v in variants)
-    winner_ctr = float(winner["ctr"])
-    comparison = ""
-    if runner_up is not None:
-        lift = winner_ctr - float(runner_up["ctr"])
-        comparison = (
-            f" That is {lift:+.1f} points over the runner-up "
-            f"“{runner_up['title']}” ({float(runner_up['ctr']):.1f}% CTR)."
-        )
-    return (
-        f"On {platform_label(experiment.platform)}, “{winner['title']}” won the A/B test "
-        f"after {total_views} total views with a {winner_ctr:.1f}% click-through rate."
-        f"{comparison} Reuse this title formula for future uploads."
-    )
+def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> None:
+    """Transition an experiment to FAILED with a stored error message."""
+    experiment.status = AbExperimentStatus.FAILED
+    experiment.error_message = str(message)[:2048]
+    db.commit()
+    logger.warning("Experiment %s failed: %s", experiment.id, experiment.error_message)
 
 
 def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
-    variants = [v for v in (experiment.variants or []) if v.get("variant_id")]
-    winner = max(variants, key=lambda v: float(v.get("ctr") or 0.0))
-    experiment.winning_variant_id = winner["variant_id"]
-    experiment.learned_insight = generate_learned_insight(experiment)
+    """Ask the Mind to pick the winner and author the learned insight.
+
+    The verdict call is fail-closed: any MindsError (unconfigured builder,
+    network failure, unparseable or invalid verdict) raises so the caller
+    can transition the experiment to FAILED — no Python max-CTR fallback.
+    """
+    clip = experiment.clip
+    if clip is None:
+        raise RuntimeError("Experiment references a missing clip")
+    settings = get_settings()
+    memory = None
+    if settings.MINDS_AGENT_ID:
+        try:
+            memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
+        except minds.MindsError as exc:
+            logger.info(
+                "Experiment %s: memory context unavailable, deciding without it: %s",
+                experiment.id,
+                exc,
+            )
+    memory_context = minds.build_memory_context(memory) if memory else None
+    verdict = minds.decide_experiment_winner(
+        platform=experiment.platform,
+        variants=[dict(variant) for variant in (experiment.variants or [])],
+        transcript=clip.transcript_text,
+        memory_context=memory_context,
+    )
+    experiment.winning_variant_id = verdict.winning_variant_id
+    experiment.learned_insight = verdict.reasoning
     experiment.status = AbExperimentStatus.CONCLUDED
     experiment.concluded_at = datetime.now(timezone.utc)
     db.commit()
     logger.info(
-        "Experiment %s concluded: winner %s (%.2f%% CTR)",
-        experiment.id,
-        winner["variant_id"],
-        float(winner["ctr"]),
+        "Experiment %s concluded: winner %s", experiment.id, verdict.winning_variant_id
     )
 
 
@@ -144,7 +134,13 @@ def refresh_active_experiments(
     view_threshold: int | None = None,
 ) -> list[AbExperiment]:
     """One worker sweep: simulate traffic for every ACTIVE experiment and
-    conclude any that crossed the cumulative view threshold."""
+    finalize any that crossed the cumulative view threshold.
+
+    Finalization asks the Mind to pick the winner; a Mind failure
+    (unconfigured, network, or invalid verdict) fails the experiment
+    closed with an error message instead of a max-CTR fallback.
+    Returns the finalized experiments (concluded or failed).
+    """
     rng = rng or random
     threshold = view_threshold or get_settings().AB_TEST_VIEW_THRESHOLD
     concluded: list[AbExperiment] = []
@@ -162,7 +158,10 @@ def refresh_active_experiments(
             db.commit()
             total_views = sum(int(v.get("views") or 0) for v in variants)
             if total_views >= threshold:
-                _conclude_experiment(db, experiment)
-                _persist_insight_to_memory(experiment)
+                try:
+                    _conclude_experiment(db, experiment)
+                    _persist_insight_to_memory(experiment)
+                except minds.MindsError as exc:
+                    _fail_experiment(db, experiment, exc)
                 concluded.append(experiment)
     return concluded

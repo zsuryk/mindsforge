@@ -23,6 +23,7 @@ def _to_out(experiment: AbExperiment) -> AbExperimentOut:
         clip_id=experiment.clip_id,
         clip_title=experiment.clip.title if experiment.clip else "",
         platform=experiment.platform,
+        variant_kind=experiment.variant_kind,
         status=experiment.status,
         variants=[
             {
@@ -36,6 +37,7 @@ def _to_out(experiment: AbExperiment) -> AbExperimentOut:
         ],
         winning_variant_id=experiment.winning_variant_id,
         learned_insight=experiment.learned_insight,
+        error_message=experiment.error_message,
         created_at=experiment.created_at,
         concluded_at=experiment.concluded_at,
     )

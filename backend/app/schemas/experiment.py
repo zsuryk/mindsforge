@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.experiment import AbExperimentStatus
+from app.models.experiment import AbExperimentStatus, AbExperimentVariantKind
 
 Platform = Literal["youtube_shorts", "tiktok", "x"]
 
@@ -27,10 +27,12 @@ class AbExperimentOut(BaseModel):
     clip_id: str
     clip_title: str
     platform: str
+    variant_kind: AbExperimentVariantKind
     status: AbExperimentStatus
     variants: list[AbVariantOut]
     winning_variant_id: str | None = None
     learned_insight: str | None = None
+    error_message: str | None = None
     created_at: datetime
     concluded_at: datetime | None = None
 

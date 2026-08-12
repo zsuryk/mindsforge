@@ -19,6 +19,11 @@ class AbExperimentStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class AbExperimentVariantKind(str, Enum):
+    TITLE = "TITLE"
+    THUMBNAIL = "THUMBNAIL"
+
+
 class AbExperiment(Base):
     __tablename__ = "ab_experiments"
 
@@ -27,6 +32,16 @@ class AbExperiment(Base):
         ForeignKey("clips.id", ondelete="CASCADE"), index=True
     )
     platform: Mapped[str] = mapped_column(String(64))
+    variant_kind: Mapped[AbExperimentVariantKind] = mapped_column(
+        SAEnum(
+            AbExperimentVariantKind,
+            native_enum=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        default=AbExperimentVariantKind.TITLE,
+        server_default="TITLE",
+        nullable=False,
+    )
     status: Mapped[AbExperimentStatus] = mapped_column(
         SAEnum(
             AbExperimentStatus,
@@ -39,6 +54,7 @@ class AbExperiment(Base):
     variants: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     winning_variant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     learned_insight: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     concluded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

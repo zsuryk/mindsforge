@@ -319,6 +319,134 @@ def test_build_memory_context_renders_known_keys() -> None:
     assert "ab_test_history" in context
 
 
+VARIANTS = [
+    {"variant_id": "v1", "title": "Hook A", "views": 600, "clicks": 30, "ctr": 5.0},
+    {"variant_id": "v2", "title": "Hook B", "views": 400, "clicks": 8, "ctr": 2.0},
+]
+
+
+def test_decide_experiment_winner_parses_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_minds(monkeypatch)
+    captured: dict[str, Any] = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured["prompt"] = json["prompt"]
+        return FakeResponse(
+            {
+                "response": (
+                    '{"winning_variant_id": "v1", '
+                    '"reasoning": "Hook A held viewers longer; reuse this formula."}'
+                )
+            }
+        )
+
+    monkeypatch.setattr(minds.httpx, "post", fake_post)
+
+    verdict = minds.decide_experiment_winner(
+        "youtube_shorts",
+        VARIANTS,
+        "the clip transcript",
+        memory_context="brand_voice: \"bold\"",
+    )
+
+    assert verdict.winning_variant_id == "v1"
+    assert "reuse this formula" in verdict.reasoning
+    assert "youtube_shorts" in captured["prompt"]
+    assert "the clip transcript" in captured["prompt"]
+    assert "v2" in captured["prompt"]
+    assert "brand_voice" in captured["prompt"]
+
+
+def test_decide_experiment_winner_strips_markdown_fences(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse(
+            {
+                "response": (
+                    '```json\n{"winning_variant_id": "v2", '
+                    '"reasoning": "debate-style hook won."}\n```'
+                )
+            }
+        ),
+    )
+    verdict = minds.decide_experiment_winner("x", VARIANTS, "t")
+    assert verdict.winning_variant_id == "v2"
+
+
+def test_decide_experiment_winner_rejects_unknown_winner_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse(
+            {
+                "response": (
+                    '{"winning_variant_id": "ghost", "reasoning": "it felt right"}'
+                )
+            }
+        ),
+    )
+    with pytest.raises(minds.MindsError, match="unknown variant id"):
+        minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
+def test_decide_experiment_winner_rejects_empty_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse(
+            {"response": '{"winning_variant_id": "v1", "reasoning": "   "}'}
+        ),
+    )
+    with pytest.raises(minds.MindsError, match="failed validation"):
+        minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
+def test_decide_experiment_winner_raises_on_missing_response_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx, "post", lambda url, headers, json, timeout: FakeResponse({})
+    )
+    with pytest.raises(minds.MindsError, match="missing 'response'"):
+        minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
+def test_decide_experiment_winner_raises_on_non_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse({}, status_code=500),
+    )
+    with pytest.raises(minds.MindsError, match="status 500"):
+        minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
+def test_decide_experiment_winner_requires_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    with pytest.raises(minds.MindsError, match="MINDS_BUILDER_API_KEY"):
+        minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
 def test_build_memory_context_falls_back_to_whole_tree() -> None:
     context = minds.build_memory_context({"unexpected_key": {"nested": True}})
     assert "unexpected_key" in context

@@ -174,6 +174,8 @@ export async function updateAgentMemory(key: string, value: unknown): Promise<bo
 
 export type AbExperimentStatus = "ACTIVE" | "CONCLUDED" | "FAILED";
 
+export type AbExperimentVariantKind = "TITLE" | "THUMBNAIL";
+
 export type AbVariant = {
   variant_id: string;
   title: string;
@@ -187,10 +189,12 @@ export type AbExperiment = {
   clip_id: string;
   clip_title: string;
   platform: string;
+  variant_kind: AbExperimentVariantKind;
   status: AbExperimentStatus;
   variants: AbVariant[];
   winning_variant_id: string | null;
   learned_insight: string | null;
+  error_message: string | null;
   created_at: string;
   concluded_at: string | null;
 };

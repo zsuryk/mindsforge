@@ -41,6 +41,20 @@ class ClipMetadata(BaseModel):
             raise ValueError("virality_score must be an integer") from exc
 
 
+class ExperimentVerdict(BaseModel):
+    """Structured verdict returned by the Mind at experiment conclusion."""
+
+    winning_variant_id: str
+    reasoning: str
+
+    @field_validator("reasoning")
+    @classmethod
+    def _require_reasoning(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("reasoning must not be empty")
+        return value
+
+
 def _headers() -> dict[str, str]:
     key = get_settings().MINDS_BUILDER_API_KEY
     if not key:
@@ -162,8 +176,8 @@ def _build_metadata_prompt(
     )
 
 
-def _parse_metadata(message: str) -> ClipMetadata:
-    text = message.strip()
+def _parse_json_object(text: str, context: str) -> dict[str, Any]:
+    """Extract the first JSON object from a model reply, tolerating fences."""
     if text.startswith("```"):
         fenced = text.split("```", 2)
         if len(fenced) >= 2:
@@ -172,7 +186,14 @@ def _parse_metadata(message: str) -> ClipMetadata:
         start, end = text.index("{"), text.rindex("}")
         data = json.loads(text[start : end + 1])
     except (ValueError, json.JSONDecodeError) as exc:
-        raise MindsError(f"Could not parse clip metadata JSON: {exc}") from exc
+        raise MindsError(f"Could not parse {context} JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise MindsError(f"{context} returned a non-object body")
+    return data
+
+
+def _parse_metadata(message: str) -> ClipMetadata:
+    data = _parse_json_object(message, "clip metadata")
     try:
         return ClipMetadata(**data)
     except ValidationError as exc:
@@ -202,3 +223,80 @@ def generate_clip_metadata(
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Clip metadata response missing 'response' text")
     return _parse_metadata(message)
+
+
+def _build_winner_prompt(
+    platform: str,
+    variants: list[dict[str, Any]],
+    transcript: str,
+    memory_context: str | None,
+) -> str:
+    memory_block = memory_context if memory_context else "none"
+    variant_lines = "\n".join(
+        f"- variant_id: {variant.get('variant_id')}, "
+        f"title: {variant.get('title', '')}, "
+        f"views: {variant.get('views', 0)}, "
+        f"clicks: {variant.get('clicks', 0)}, "
+        f"ctr: {variant.get('ctr', 0.0)}%"
+        for variant in variants
+    )
+    return (
+        "You are an A/B testing analyst working with a creator. "
+        "An experiment on one of the creator's clips just crossed its view "
+        "threshold; study the variants and the clip transcript, then pick the "
+        "winning variant and explain why.\n\n"
+        f"Platform: {platform}\n\n"
+        f"Clip transcript:\n{transcript}\n\n"
+        "Experiment variants:\n"
+        f"{variant_lines}\n\n"
+        "Creator memory context (brand voice and past learnings):\n"
+        f"{memory_block}\n\n"
+        'Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n'
+        '{\n'
+        '  "winning_variant_id": "the id of the winning variant from the list above",\n'
+        '  "reasoning": "2-3 sentences: why this variant won and what to reuse next time"\n'
+        '}\n'
+        "Rules:\n"
+        "- winning_variant_id must exactly match one of the variant_id values above.\n"
+        "- reasoning must be non-empty and grounded in the variant metrics and clip content.\n"
+        "- The reasoning doubles as the lesson persisted to the creator's memory."
+    )
+
+
+def _parse_winner_verdict(message: str) -> ExperimentVerdict:
+    data = _parse_json_object(message, "experiment verdict")
+    try:
+        return ExperimentVerdict(**data)
+    except ValidationError as exc:
+        raise MindsError(f"Experiment verdict failed validation: {exc}") from exc
+
+
+def decide_experiment_winner(
+    platform: str,
+    variants: list[dict[str, Any]],
+    transcript: str,
+    *,
+    memory_context: str | None = None,
+) -> ExperimentVerdict:
+    """Ask the Mind to pick the winning variant of a concluded experiment.
+
+    Raises MindsError on any failure (missing credentials, HTTP errors,
+    unparseable verdicts, unknown winner ids, empty reasoning) so callers
+    can fail the experiment closed instead of falling back to metrics.
+    """
+    prompt = _build_winner_prompt(platform, variants, transcript, memory_context)
+    response = _post(f"/minds/{_agent_id()}/message", {"prompt": prompt})
+    if response.status_code != 200:
+        raise MindsError(
+            f"Experiment winner decision failed with status {response.status_code}"
+        )
+    message = response.json().get("response")
+    if not isinstance(message, str) or not message.strip():
+        raise MindsError("Experiment verdict response missing 'response' text")
+    verdict = _parse_winner_verdict(message)
+    known_ids = {str(variant.get("variant_id")) for variant in variants if variant.get("variant_id")}
+    if not known_ids or verdict.winning_variant_id not in known_ids:
+        raise MindsError(
+            f"Experiment verdict picked unknown variant id {verdict.winning_variant_id!r}"
+        )
+    return verdict

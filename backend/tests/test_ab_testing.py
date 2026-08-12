@@ -45,6 +45,19 @@ def add_experiment(db, *, variants, status=AbExperimentStatus.ACTIVE, **kwargs) 
     return experiment
 
 
+def stub_winner(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    variant_id: str | None = None,
+    reasoning: str = "Hook A held viewers longer; reuse this formula.",
+) -> None:
+    def decide(platform, variants, transcript, memory_context=None):
+        picked = variant_id if variant_id is not None else variants[0]["variant_id"]
+        return minds.ExperimentVerdict(winning_variant_id=picked, reasoning=reasoning)
+
+    monkeypatch.setattr(minds, "decide_experiment_winner", decide)
+
+
 @pytest.fixture()
 def _minds_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
@@ -78,6 +91,8 @@ def test_start_ab_test_creates_active_experiment_with_variant_thumbs(
     assert body["clip_title"] == "My clip"
     assert body["platform"] == "tiktok"
     assert body["status"] == "ACTIVE"
+    assert body["variant_kind"] == "TITLE"
+    assert body["error_message"] is None
     assert body["winning_variant_id"] is None
     assert body["learned_insight"] is None
     assert body["concluded_at"] is None
@@ -216,7 +231,80 @@ def test_sweep_accumulates_views_and_keeps_experiment_active_below_threshold(
         assert total >= 2 * ab_testing.VIEWS_PER_SWEEP_MIN
 
 
-def test_sweep_concludes_above_threshold_with_highest_ctr_winner(
+def test_sweep_concludes_above_threshold_with_mind_decided_winner(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    stub_winner(monkeypatch, variant_id="v1", reasoning="A won because of its hook.")
+
+    concluded = ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    assert [item.id for item in concluded] == [experiment.id]
+    with get_session_factory()() as db:
+        stored = db.get(AbExperiment, experiment.id)
+        assert stored.status == AbExperimentStatus.CONCLUDED
+        assert stored.winning_variant_id == "v1"
+        assert stored.concluded_at is not None
+        assert stored.learned_insight == "A won because of its hook."
+
+    body = test_client.get("/api/v1/ab-tests/active").json()["experiments"][0]
+    assert body["status"] == "CONCLUDED"
+    assert body["winning_variant_id"] == "v1"
+    assert body["concluded_at"] is not None
+    assert body["learned_insight"] == "A won because of its hook."
+
+
+def test_mind_failure_fails_experiment_with_error_message(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    monkeypatch.setattr(
+        minds,
+        "decide_experiment_winner",
+        lambda platform, variants, transcript, memory_context=None: (
+            _ for _ in ()
+        ).throw(minds.MindsError("builder api down")),
+    )
+
+    concluded = ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    assert [item.id for item in concluded] == [experiment.id]
+    with get_session_factory()() as db:
+        stored = db.get(AbExperiment, experiment.id)
+        assert stored.status == AbExperimentStatus.FAILED
+        assert stored.winning_variant_id is None
+        assert stored.learned_insight is None
+        assert "builder api down" in stored.error_message
+
+    body = test_client.get("/api/v1/ab-tests/active").json()
+    assert experiment.id not in {item["id"] for item in body["experiments"]}
+
+
+def test_unconfigured_minds_fails_experiment_at_conclusion(
     client: tuple[TestClient, Path],
 ) -> None:
     test_client, tmp_path = client
@@ -231,24 +319,46 @@ def test_sweep_concludes_above_threshold_with_highest_ctr_winner(
             ],
         )
 
-    concluded = ab_testing.refresh_active_experiments(view_threshold=1000)
+    ab_testing.refresh_active_experiments(view_threshold=1000)
 
-    assert [item.id for item in concluded] == [experiment.id]
     with get_session_factory()() as db:
         stored = db.get(AbExperiment, experiment.id)
-        assert stored.status == AbExperimentStatus.CONCLUDED
-        assert stored.winning_variant_id == "v1"
-        assert stored.concluded_at is not None
-        assert stored.learned_insight is not None
-        assert stored.learned_insight != ""
-        assert "A" in stored.learned_insight
-        assert "YouTube Shorts" in stored.learned_insight
+        assert stored.status == AbExperimentStatus.FAILED
+        assert stored.winning_variant_id is None
+        assert "MINDS" in stored.error_message
+        assert "not configured" in stored.error_message
 
-    body = test_client.get("/api/v1/ab-tests/active").json()["experiments"][0]
-    assert body["status"] == "CONCLUDED"
-    assert body["winning_variant_id"] == "v1"
-    assert body["concluded_at"] is not None
-    assert body["learned_insight"] == stored.learned_insight
+
+def test_mind_picking_unknown_variant_fails_experiment(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    monkeypatch.setattr(
+        minds,
+        "decide_experiment_winner",
+        lambda platform, variants, transcript, memory_context=None: (
+            _ for _ in ()
+        ).throw(minds.MindsError("Experiment verdict picked unknown variant id 'ghost'")),
+    )
+
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    with get_session_factory()() as db:
+        stored = db.get(AbExperiment, experiment.id)
+        assert stored.status == AbExperimentStatus.FAILED
+        assert "unknown variant id" in stored.error_message
 
 
 def test_conclusion_writes_insight_to_minds_memory(
@@ -268,6 +378,7 @@ def test_conclusion_writes_insight_to_minds_memory(
             ],
         )
 
+    stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
     monkeypatch.setattr(
         minds,
         "fetch_memory",
@@ -294,7 +405,7 @@ def test_conclusion_writes_insight_to_minds_memory(
     assert record["platform"] == "youtube_shorts"
     assert record["winning_variant_id"] == "v1"
     assert record["concluded_at"] is not None
-    assert isinstance(record["learned_insight"], str) and record["learned_insight"]
+    assert record["learned_insight"] == "A won; reuse its hook style."
 
 
 def test_memory_write_failure_still_concludes_experiment(
@@ -314,6 +425,7 @@ def test_memory_write_failure_still_concludes_experiment(
             ],
         )
 
+    stub_winner(monkeypatch, variant_id="v1", reasoning="A won.")
     monkeypatch.setattr(
         minds,
         "fetch_memory",
@@ -326,7 +438,7 @@ def test_memory_write_failure_still_concludes_experiment(
         stored = db.get(AbExperiment, experiment.id)
         assert stored.status == AbExperimentStatus.CONCLUDED
         assert stored.winning_variant_id == "v1"
-        assert stored.learned_insight is not None
+        assert stored.learned_insight == "A won."
 
 
 def test_sweep_skips_concluded_experiments(
@@ -368,6 +480,10 @@ def test_launched_experiment_runs_to_conclusion_via_sweeps(
     assert created.status_code == 201
     experiment_id = created.json()["id"]
 
+    stub_winner(
+        monkeypatch,
+        reasoning="The debate-style hook out-performed; reuse the formula.",
+    )
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
     captured: dict[str, object] = {}
     monkeypatch.setattr(
