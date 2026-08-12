@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 from app.core.config import get_settings
 
@@ -13,7 +13,13 @@ MINDS_BUILDER_BASE_URL = "https://build.hellominds.ai/api/v1"
 BUILDER_API_KEY_HEADER = "X-Api-Key"
 HTTP_TIMEOUT_SECONDS = 30.0
 
-MEMORY_CONTEXT_KEYS = ("creator_id", "brand_voice", "historical_insights", "ab_test_history")
+MEMORY_CONTEXT_KEYS = (
+    "creator_id",
+    "brand_voice",
+    "historical_insights",
+    "ab_test_history",
+    "adaptation_history",
+)
 MEMORY_CONTEXT_VALUE_LIMIT = 2000
 
 
@@ -53,6 +59,94 @@ class ExperimentVerdict(BaseModel):
         if not value or not value.strip():
             raise ValueError("reasoning must not be empty")
         return value
+
+
+class ThumbnailBrief(BaseModel):
+    """A Test & Compare-style thumbnail concept authored by the Mind."""
+
+    frame_timestamp: float
+    overlay_text: str
+
+
+class ChapterItem(BaseModel):
+    title: str
+    timestamp: float
+
+
+class CommunityPoll(BaseModel):
+    question: str
+    options: list[str]
+
+
+class QuizItem(BaseModel):
+    question: str
+    answer: str
+
+
+class OverlaySpecItem(BaseModel):
+    text: str
+    placement: str
+    style: str
+
+
+class StickerSuggestion(BaseModel):
+    emoji: str
+    placement: str
+
+
+class AdaptationFeatures(BaseModel):
+    """Feature manifest authored by the Mind for one platform-surface pair.
+
+    Surfaces exercise different subsets of the fields; `_check_surface_shape`
+    enforces the manifest shape for the targeted pair (ADR-0002: an invalid
+    manifest is a Minds failure, not a silent fix-up).
+    """
+
+    platform: str
+    surface: str
+    chapters: list[ChapterItem] | None = None
+    tags: list[str] | None = None
+    poll: CommunityPoll | None = None
+    quiz: list[QuizItem] | None = None
+    thumbnail_briefs: list[ThumbnailBrief] | None = None
+    shorts_link: str | None = None
+    platform_hooks: list[str] | None = None
+    overlay_spec: list[OverlaySpecItem] | None = None
+    caption_style: str | None = None
+    stickers: list[StickerSuggestion] | None = None
+    pinned_comment: str | None = None
+    caption: str | None = None
+    hashtags: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _check_surface_shape(self) -> "AdaptationFeatures":
+        if self.surface == "SHORTS":
+            if not self.thumbnail_briefs or len(self.thumbnail_briefs) != 3:
+                raise ValueError("youtube SHORTS requires exactly 3 thumbnail_briefs")
+            if not self.platform_hooks:
+                raise ValueError("youtube SHORTS requires platform_hooks")
+        elif self.surface == "LONG_FORM":
+            if not self.chapters or not self.tags or not self.poll or not self.quiz:
+                raise ValueError(
+                    "youtube LONG_FORM requires chapters, tags, poll and quiz"
+                )
+            if not self.thumbnail_briefs or len(self.thumbnail_briefs) != 3:
+                raise ValueError("youtube LONG_FORM requires exactly 3 thumbnail_briefs")
+        elif self.platform == "tiktok":
+            if (
+                not self.overlay_spec
+                or not self.caption_style
+                or not self.stickers
+                or not self.pinned_comment
+            ):
+                raise ValueError(
+                    "tiktok POST requires overlay_spec, caption_style, stickers "
+                    "and a pinned_comment"
+                )
+        elif self.platform == "x":
+            if not self.caption or not self.hashtags:
+                raise ValueError("x POST requires a caption and hashtags")
+        return self
 
 
 def _headers() -> dict[str, str]:
@@ -300,3 +394,122 @@ def decide_experiment_winner(
             f"Experiment verdict picked unknown variant id {verdict.winning_variant_id!r}"
         )
     return verdict
+
+
+ADAPTATION_FEATURE_SHAPES: dict[tuple[str, str], str] = {
+    ("youtube", "LONG_FORM"): (
+        "{\n"
+        '  "chapters": [{"title": "Hook", "timestamp": 2.5}],\n'
+        '  "tags": ["tag one", "tag two"],\n'
+        '  "poll": {"question": "Which take is right?", "options": ["A", "B"]},\n'
+        '  "quiz": [{"question": "Q?", "answer": "A"}],\n'
+        '  "thumbnail_briefs": [{"frame_timestamp": 12.0, "overlay_text": "Bold hook"}],\n'
+        '  "shorts_link": "title of a related Short of this creator"\n'
+        "}\n"
+    ),
+    ("youtube", "SHORTS"): (
+        "{\n"
+        '  "thumbnail_briefs": [{"frame_timestamp": 12.0, "overlay_text": "Bold hook"}],\n'
+        '  "platform_hooks": ["first-frame hook text"]\n'
+        "}\n"
+    ),
+    ("tiktok", "POST"): (
+        "{\n"
+        '  "overlay_spec": [{"text": "caption text", "placement": "center", "style": "bold"}],\n'
+        '  "caption_style": "auto-caption styling note",\n'
+        '  "stickers": [{"emoji": "🔥", "placement": "top-right"}],\n'
+        '  "pinned_comment": "pinned comment text"\n'
+        "}\n"
+    ),
+    ("x", "POST"): (
+        "{\n"
+        '  "caption": "the post caption",\n'
+        '  "hashtags": ["#tag"]\n'
+        "}\n"
+    ),
+}
+
+
+def _build_adaptation_prompt(
+    clip: dict[str, Any],
+    platform: str,
+    surface: str,
+    segments: list[dict[str, Any]],
+    memory_context: str | None,
+) -> str:
+    memory_block = memory_context if memory_context else "none"
+    clip_block = (
+        f"Clip id: {clip.get('id')}\n"
+        f"Clip title: {clip.get('title', '')}\n"
+        f"Clip window: [{clip.get('start_time')}s, {clip.get('end_time')}s]\n"
+        f"Clip transcript:\n{clip.get('transcript', '')}"
+    )
+    segment_lines = "\n".join(
+        f"- [{segment.get('start')}s → {segment.get('end')}s] {segment.get('text', '')}"
+        for segment in segments
+    )
+    shape = ADAPTATION_FEATURE_SHAPES.get((platform, surface))
+    if shape is None:
+        raise MindsError(f"Unsupported adaptation target {platform}/{surface}")
+    return (
+        "You are a platform-native content packager working with a creator. "
+        "Author the complete feature manifest for publishing one cut clip on "
+        f"the creator's {platform} ({surface}) channel.\n\n"
+        f"{clip_block}\n\n"
+        "Timed transcript segments:\n"
+        f"{segment_lines}\n\n"
+        "Creator memory context (brand voice, past insights, previous adaptations):\n"
+        f"{memory_block}\n\n"
+        "Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n"
+        f"{shape}"
+        "Rules:\n"
+        "- frame_timestamp values must lie inside the clip window "
+        f"[{clip.get('start_time')}s, {clip.get('end_time')}s].\n"
+        "- youtube surfaces: exactly 3 thumbnail_briefs for Test & Compare.\n"
+        "- chapter timestamps are clip-relative seconds inside the clip window.\n"
+        "- overlay_spec entries must match spoken segments by content, with a "
+        "placement (top|center|bottom) and a style (bold|outlined|italic).\n"
+        "- Everything must be grounded in the clip transcript; do not invent facts.\n"
+        "- Referencing past adaptations and insights is encouraged; the history "
+        "above is the creator's compounding learning."
+    )
+
+
+def _parse_adaptation_features(message: str, platform: str, surface: str) -> AdaptationFeatures:
+    data = _parse_json_object(message, "adaptation features")
+    if data.get("surface") not in (None, surface):
+        raise MindsError(
+            f"Adaptation features returned surface {data.get('surface')!r}, "
+            f"expected {surface!r}"
+        )
+    data["platform"] = platform
+    data["surface"] = surface
+    try:
+        return AdaptationFeatures(**data)
+    except ValidationError as exc:
+        raise MindsError(f"Adaptation features failed validation: {exc}") from exc
+
+
+def generate_adaptation_features(
+    clip: dict[str, Any],
+    platform: str,
+    surface: str,
+    segments: list[dict[str, Any]],
+    *,
+    memory_context: str | None = None,
+) -> AdaptationFeatures:
+    """Ask the Mind to author the feature manifest for one platform-surface.
+
+    Raises MindsError on any failure (missing credentials, HTTP errors,
+    unparseable or invalid manifests) so the adaptation fails closed.
+    """
+    prompt = _build_adaptation_prompt(clip, platform, surface, segments, memory_context)
+    response = _post(f"/minds/{_agent_id()}/message", {"prompt": prompt})
+    if response.status_code != 200:
+        raise MindsError(
+            f"Adaptation features generation failed with status {response.status_code}"
+        )
+    message = response.json().get("response")
+    if not isinstance(message, str) or not message.strip():
+        raise MindsError("Adaptation features response missing 'response' text")
+    return _parse_adaptation_features(message, platform, surface)

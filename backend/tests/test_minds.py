@@ -447,6 +447,167 @@ def test_decide_experiment_winner_requires_credentials(
         minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
 
 
+CLIP = {
+    "id": "clip-1",
+    "title": "My clip",
+    "start_time": 2.0,
+    "end_time": 32.0,
+    "transcript": "hello world.",
+}
+SEGMENTS = [
+    {"text": "hello", "start": 0.0, "end": 2.0},
+    {"text": "world.", "start": 2.0, "end": 4.0},
+]
+
+
+def _youtube_long_form_reply() -> str:
+    return (
+        '{"chapters": [{"title": "Hook", "timestamp": 2.0}], '
+        '"tags": ["editing", "storytime"], '
+        '"poll": {"question": "Which?", "options": ["A", "B"]}, '
+        '"quiz": [{"question": "What?", "answer": "This"}], '
+        '"thumbnail_briefs": ['
+        '{"frame_timestamp": 3.0, "overlay_text": "one"}, '
+        '{"frame_timestamp": 4.0, "overlay_text": "two"}, '
+        '{"frame_timestamp": 5.0, "overlay_text": "three"}]}'
+    )
+
+
+def test_generate_adaptation_features_parses_long_form_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    captured: dict[str, Any] = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured["prompt"] = json["prompt"]
+        return FakeResponse({"response": _youtube_long_form_reply()})
+
+    monkeypatch.setattr(minds.httpx, "post", fake_post)
+
+    manifest = minds.generate_adaptation_features(
+        CLIP, "youtube", "LONG_FORM", SEGMENTS, memory_context="brand_voice: \"bold\""
+    )
+
+    assert manifest.platform == "youtube"
+    assert manifest.surface == "LONG_FORM"
+    assert manifest.chapters[0].title == "Hook"
+    assert manifest.tags == ["editing", "storytime"]
+    assert manifest.poll.question == "Which?"
+    assert manifest.poll.options == ["A", "B"]
+    assert manifest.quiz[0].answer == "This"
+    assert len(manifest.thumbnail_briefs) == 3
+    assert manifest.thumbnail_briefs[0].overlay_text == "one"
+    assert "youtube (LONG_FORM)" in captured["prompt"]
+    assert "hello world." in captured["prompt"]
+    assert "brand_voice" in captured["prompt"]
+    assert "[2.0s → 4.0s] world." in captured["prompt"]
+
+
+def test_generate_adaptation_features_accepts_surface_echo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    echoed = _youtube_long_form_reply().replace(
+        '{"chapters"', '{"surface": "LONG_FORM", "chapters"', 1
+    )
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse({"response": echoed}),
+    )
+    manifest = minds.generate_adaptation_features(CLIP, "youtube", "LONG_FORM", SEGMENTS)
+    assert manifest.surface == "LONG_FORM"
+
+
+def test_generate_adaptation_features_rejects_surface_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    echoed = _youtube_long_form_reply().replace(
+        '{"chapters"', '{"surface": "SHORTS", "chapters"', 1
+    )
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse({"response": echoed}),
+    )
+    with pytest.raises(minds.MindsError, match="expected 'LONG_FORM'"):
+        minds.generate_adaptation_features(CLIP, "youtube", "LONG_FORM", SEGMENTS)
+
+
+def test_generate_adaptation_features_enforces_three_thumbnail_briefs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    reply = (
+        '{"thumbnail_briefs": ['
+        '{"frame_timestamp": 3.0, "overlay_text": "one"}, '
+        '{"frame_timestamp": 4.0, "overlay_text": "two"}], '
+        '"platform_hooks": ["hook"]}'
+    )
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse({"response": reply}),
+    )
+    with pytest.raises(minds.MindsError, match="exactly 3 thumbnail_briefs"):
+        minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
+
+
+def test_generate_adaptation_features_validates_tiktok_post_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse(
+            {"response": '{"overlay_spec": [{"text": "t", "placement": "center", "style": "bold"}]}'}
+        ),
+    )
+    with pytest.raises(minds.MindsError, match="caption_style, stickers"):
+        minds.generate_adaptation_features(CLIP, "tiktok", "POST", SEGMENTS)
+
+
+def test_generate_adaptation_features_requires_x_caption_and_hashtags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse({"response": '{"caption": "hot take"}'}),
+    )
+    with pytest.raises(minds.MindsError, match="caption and hashtags"):
+        minds.generate_adaptation_features(CLIP, "x", "POST", SEGMENTS)
+
+
+def test_generate_adaptation_features_raises_on_invalid_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse({"response": "not json"}),
+    )
+    with pytest.raises(minds.MindsError, match="Could not parse"):
+        minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
+
+
+def test_generate_adaptation_features_requires_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    with pytest.raises(minds.MindsError, match="MINDS_BUILDER_API_KEY"):
+        minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
+
+
 def test_build_memory_context_falls_back_to_whole_tree() -> None:
     context = minds.build_memory_context({"unexpected_key": {"nested": True}})
     assert "unexpected_key" in context
