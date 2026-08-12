@@ -1,10 +1,12 @@
 from collections.abc import Generator
 from functools import lru_cache
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.core.config import get_settings
+from app.core.config import BACKEND_DIR, get_settings
 
 
 class Base(DeclarativeBase):
@@ -20,9 +22,9 @@ def get_engine():
 
 
 def init_db() -> None:
-    from app.models import clip, experiment, job  # noqa: F401  register models with Base metadata
-
-    Base.metadata.create_all(get_engine())
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    command.upgrade(config, "head")
 
 
 def get_session_factory() -> sessionmaker:
