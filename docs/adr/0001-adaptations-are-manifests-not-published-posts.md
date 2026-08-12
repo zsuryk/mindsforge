@@ -1,0 +1,3 @@
+# Adaptations are publish-ready manifests, not published posts
+
+Platform adaptation packages are generated as a feature manifest (authored by the Mind) plus downloadable assets (rendered thumbnails, SRT captions, chapter lists) that the creator publishes manually — MindsForge never calls YouTube/TikTok/X APIs to post content. Auto-publishing was rejected: it requires per-platform OAuth, review, and quotas, and would have made the Mind's authored content secondary to platform plumbing. Consequence: the demo stays self-contained, and an adaptation's own `adaptation_history` cannot carry real post-performance data until a future publishing integration exists.

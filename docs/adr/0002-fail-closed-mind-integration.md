@@ -1,0 +1,3 @@
+# Mind integration is fail-closed
+
+The Mind is not optional: a scoring failure fails the job, and a failure at experiment-conclusion time (when the Mind must pick the winner) fails the experiment — no skipping unscored clips, no fallback to highest-CTR. This keeps the Mind genuinely integral rather than decorational, at the cost of requiring live Minds credentials for the demo and clear error messages instead of degraded output. Notice-Minds was treated as the "working offline" mode originally; that mode is deliberately withdrawn for scored output.
