@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 from app.core.config import get_settings
-from app.services import media, transcription
+from app.services import media, minds, transcription
 from app.services.pipeline import run_pipeline
 from app.services.transcription import Transcription, TranscriptSegment
 from fastapi.testclient import TestClient
@@ -18,7 +18,24 @@ def _enable_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
 
 
+def _stub_minds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    get_settings.cache_clear()
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
+    monkeypatch.setattr(
+        minds,
+        "generate_clip_metadata",
+        lambda transcript, duration_seconds=None, memory_context=None: minds.ClipMetadata(
+            virality_score=80,
+            suggested_titles=["Title A", "Title B"],
+            platform_hooks={"youtube_shorts": ["s"], "tiktok": ["t"], "x": ["x"]},
+        ),
+    )
+
+
 def _stub_pipeline_stages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    _stub_minds(monkeypatch)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
@@ -71,6 +88,7 @@ def test_url_job_visits_downloading_and_extracting_clips_statuses(
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
+    _stub_minds(monkeypatch)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
@@ -206,3 +224,92 @@ def test_process_unknown_job_is_a_noop(
     )
     run_pipeline("does-not-exist")
     assert test_client.get("/api/v1/jobs/does-not-exist").status_code == 404
+
+
+def test_unconfigured_minds_fails_job_at_scoring_stage(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    _enable_pipeline(monkeypatch)
+    _stub_pipeline_stages(monkeypatch, tmp_path)
+    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
+    get_settings.cache_clear()
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/no-minds.mp4"},
+    )
+    job_id = res.json()["job_id"]
+
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "FAILED"
+    assert "MINDS_BUILDER_API_KEY" in job["error_message"]
+    assert "fail-closed" in job["error_message"]
+
+    clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
+    assert all(clip["virality_score"] is None for clip in clips)
+
+
+def test_scoring_minds_error_fails_job(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    _enable_pipeline(monkeypatch)
+    _stub_pipeline_stages(monkeypatch, tmp_path)
+
+    def failing_metadata(transcript, duration_seconds=None, memory_context=None):
+        raise minds.MindsError("builder api down")
+
+    monkeypatch.setattr(minds, "generate_clip_metadata", failing_metadata)
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/flaky.mp4"},
+    )
+    job_id = res.json()["job_id"]
+
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "FAILED"
+    assert "builder api down" in job["error_message"]
+
+    clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
+    assert clips == []
+
+
+def test_memory_fetch_failure_still_scores_without_context(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    _enable_pipeline(monkeypatch)
+    _stub_pipeline_stages(monkeypatch, tmp_path)
+    contexts: list[str | None] = []
+    monkeypatch.setattr(
+        minds,
+        "fetch_memory",
+        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+    )
+
+    def capturing_metadata(transcript, duration_seconds=None, memory_context=None):
+        contexts.append(memory_context)
+        return minds.ClipMetadata(
+            virality_score=70,
+            suggested_titles=["A"],
+            platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},
+        )
+
+    monkeypatch.setattr(minds, "generate_clip_metadata", capturing_metadata)
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/degraded-memory.mp4"},
+    )
+    job_id = res.json()["job_id"]
+
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "COMPLETED"
+    clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
+    assert all(clip["virality_score"] == 70 for clip in clips)
+    assert contexts == [None]

@@ -101,6 +101,8 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     from app.core.config import get_settings
 
     get_settings.cache_clear()
@@ -200,12 +202,14 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
     assert detail.json() == clip
 
 
-def test_scoring_failure_leaves_clip_unscored_but_completes_job(
+def test_scoring_minds_error_fails_job_and_rolls_back_clips(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     from app.core.config import get_settings
 
     get_settings.cache_clear()
@@ -257,12 +261,11 @@ def test_scoring_failure_leaves_clip_unscored_but_completes_job(
     job_id = res.json()["job_id"]
 
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
-    assert job["status"] == "COMPLETED"
+    assert job["status"] == "FAILED"
+    assert "builder api down" in job["error_message"]
 
     clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
-    assert len(clips) == 1
-    assert clips[0]["virality_score"] is None
-    assert clips[0]["suggested_hooks"] is None
+    assert clips == []
 
 
 def test_clips_endpoint_404s_for_unknown_job(client: tuple[TestClient, Path]) -> None:
@@ -367,10 +370,12 @@ def test_rerunning_pipeline_clears_stale_error_message(
 
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    from app.services import media, transcription
+    from app.services import media, minds, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
     raw = tmp_path / "raw" / "video.mp4"
@@ -383,6 +388,16 @@ def test_rerunning_pipeline_clears_stale_error_message(
         media,
         "extract_frame_at_timestamp",
         lambda source, dest, timestamp: dest.write_bytes(b"x") or dest,
+    )
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(
+        minds,
+        "generate_clip_metadata",
+        lambda transcript, duration_seconds=None, memory_context=None: minds.ClipMetadata(
+            virality_score=60,
+            suggested_titles=["A"],
+            platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},
+        ),
     )
 
     def fake_transcribe(audio_path: Path):

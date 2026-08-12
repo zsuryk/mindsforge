@@ -63,9 +63,9 @@ def _extract_clips(db: Session, job: Job, source: Path) -> None:
 def _score_clips(db: Session, job: Job) -> None:
     """Ask the Mind to score each extracted clip and persist the verdict.
 
-    Scoring is best-effort: missing credentials, API errors, or unparseable
-    responses leave a clip unscored (null fields) rather than failing the
-    job, per ticket 05.
+    Scoring is fail-closed (ADR-0002): Minds must be configured and every
+    verdict call must succeed, otherwise the job fails. The memory-context
+    fetch may still degrade to None — only verdict calls are gated.
     """
     settings = get_settings()
     clips = db.scalars(
@@ -73,6 +73,12 @@ def _score_clips(db: Session, job: Job) -> None:
     ).all()
     if not clips:
         return
+
+    if not settings.MINDS_BUILDER_API_KEY or not settings.MINDS_AGENT_ID:
+        raise RuntimeError(
+            "Minds is not configured (MINDS_BUILDER_API_KEY/MINDS_AGENT_ID); "
+            "scoring is fail-closed so the job cannot complete"
+        )
 
     try:
         memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
@@ -84,15 +90,11 @@ def _score_clips(db: Session, job: Job) -> None:
     memory_context = minds.build_memory_context(memory) if memory else None
 
     for clip in clips:
-        try:
-            metadata = minds.generate_clip_metadata(
-                clip.transcript_text,
-                duration_seconds=clip.end_time - clip.start_time,
-                memory_context=memory_context,
-            )
-        except minds.MindsError as exc:
-            logger.warning("Job %s: clip %s left unscored: %s", job.id, clip.id, exc)
-            continue
+        metadata = minds.generate_clip_metadata(
+            clip.transcript_text,
+            duration_seconds=clip.end_time - clip.start_time,
+            memory_context=memory_context,
+        )
         clip.virality_score = metadata.virality_score
         clip.suggested_hooks = metadata.model_dump()
         logger.info("Job %s: clip %s scored %d/100", job.id, clip.id, clip.virality_score)
