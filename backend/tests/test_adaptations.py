@@ -85,12 +85,20 @@ def stub_features(
     monkeypatch.setattr(minds, "generate_adaptation_features", generate)
 
 
+def stub_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.adaptations.render_adaptation_assets",
+        lambda db, adaptation: {"thumbnail_variants": []},
+    )
+
+
 def test_generate_adaptation_runs_lifecycle_to_ready(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
     stub_features(monkeypatch, features=YOUTUBE_LONG_FORM_FEATURES)
+    stub_rendering(monkeypatch)
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
 
@@ -123,6 +131,7 @@ def test_regenerate_returns_cached_ready_row_without_regeneration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
+    stub_rendering(monkeypatch)
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
 
@@ -203,6 +212,7 @@ def test_failed_adaptation_can_be_retried(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
+    stub_rendering(monkeypatch)
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
     stub_features(monkeypatch, error=minds.MindsError("builder api down"))
@@ -273,6 +283,7 @@ def test_success_appends_adaptation_history_to_minds_memory(
     _minds_env: None,
 ) -> None:
     test_client, tmp_path = client
+    stub_rendering(monkeypatch)
     stub_features(
         monkeypatch,
         features={
@@ -320,6 +331,7 @@ def test_success_without_minds_persists_features_locally(
 ) -> None:
     test_client, tmp_path = client
     stub_features(monkeypatch, features={"caption": "short", "hashtags": ["#x"]})
+    stub_rendering(monkeypatch)
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
 
@@ -341,3 +353,29 @@ def test_unconfigured_minds_fails_adaptation(
     detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
     assert detail["status"] == "FAILED"
     assert "MINDS" in detail["error_message"]
+
+
+def test_asset_rendering_failure_fails_adaptation(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    stub_features(monkeypatch, features=YOUTUBE_LONG_FORM_FEATURES)
+
+    from app.services import media
+
+    def broken_extract(source, dest, timestamp):
+        raise media.MediaError("ffmpeg failed")
+
+    monkeypatch.setattr(media, "extract_frame_at_timestamp", broken_extract)
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        clip.job.file_path = clip.file_path
+        db.commit()
+
+    res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/youtube/LONG_FORM")
+    adaptation_id = res.json()["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
+    assert detail["status"] == "FAILED"
+    assert "ffmpeg failed" in detail["error_message"]
+    assert detail["assets"] is None

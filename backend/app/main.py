@@ -38,6 +38,16 @@ async def _ab_worker_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    app.router.routes = [
+        route
+        for route in app.router.routes
+        if getattr(route, "path", None) != "/media"
+    ]
+    app.mount(
+        "/media",
+        StaticFiles(directory=get_settings().MEDIA_DIR, check_dir=False),
+        name="media",
+    )
     ab_worker = asyncio.create_task(_ab_worker_loop())
     try:
         yield
@@ -57,12 +67,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-app.mount(
-    "/media",
-    StaticFiles(directory=settings.MEDIA_DIR, check_dir=False),
-    name="media",
 )
 
 app.include_router(health_router, prefix=settings.API_V1_PREFIX, tags=["health"])

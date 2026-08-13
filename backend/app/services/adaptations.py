@@ -5,6 +5,7 @@ from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import AdaptationStatus, ClipAdaptation
 from app.services import minds
+from app.services.adaptation_assets import render_adaptation_assets
 from app.services.transcription import TranscriptSegment
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,8 @@ def generate_adaptation(adaptation_id: str) -> None:
                 memory_context=_memory_context(settings),
             )
             adaptation.features = manifest.model_dump(exclude={"platform", "surface"})
+            db.commit()
+            adaptation.assets = render_adaptation_assets(db, adaptation)
             db.commit()
             _persist_adaptation_history(adaptation)
             adaptation.status = AdaptationStatus.READY
