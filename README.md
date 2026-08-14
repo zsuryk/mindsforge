@@ -28,6 +28,7 @@ Everything renders into real assets (thumbnail PNGs, `captions.srt`, `chapters.t
 - **Node.js 20+** (LTS recommended)
 - **FFmpeg 6+** (in system PATH)
 - **Three API keys** — jobs are fail-closed without them: `GROQ_API_KEY` (transcription), `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory). Grab a free Groq key at https://console.groq.com; contact for the Minds keys or generate one.
+- You may need to use a VPN if you are located in a region unsupported by Groq.
 
 ## Install the tools
 
@@ -53,7 +54,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
 ```
 
-Verify: `uv --version && node --version && ffmpeg -version` (open a new terminal if any command isn't recognized).
+Verify: `uv --version && node --version && ffmpeg -version`
 
 ## Configure
 
@@ -67,7 +68,7 @@ Fill in the three keys in `.env`. Everything else has sane defaults.
 
 ## Run
 
-**Backend** (terminal 1):
+**Backend**:
 
 ```sh
 cd backend
@@ -77,7 +78,7 @@ uv run --module app
 
 Serves on `http://localhost:8000` — health check at `/api/v1/health`.
 
-**Frontend** (terminal 2):
+**Frontend**:
 
 ```sh
 cd frontend
