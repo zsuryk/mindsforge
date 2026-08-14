@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
 
 from app.api.ab_tests import router as ab_tests_router
 from app.api.adaptations import router as adaptations_router
@@ -14,7 +15,8 @@ from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.memory import router as memory_router
 from app.core.config import get_settings
-from app.db.base import init_db
+from app.db.base import get_session_factory, init_db
+from app.models.job import IN_PROGRESS_STATUSES, Job, JobStatus
 from app.services import ab_testing
 
 logger = logging.getLogger(__name__)
@@ -35,9 +37,33 @@ async def _ab_worker_loop() -> None:
             logger.exception("A/B worker sweep failed: %s", exc)
 
 
+def _recover_orphaned_jobs() -> None:
+    """Mark jobs left in an in-progress state by a previous shutdown as FAILED.
+
+    Jobs are processed as in-process background tasks, so any job still
+    PENDING/DOWNLOADING/TRANSCRIBING/EXTRACTING_CLIPS at startup was
+    interrupted by a restart and will never resume on its own. Recovery is
+    skipped when the app does not own processing (PROCESS_JOBS_ON_SUBMIT
+    false), since an external worker may still be responsible for them.
+    """
+    if not get_settings().PROCESS_JOBS_ON_SUBMIT:
+        return
+    with get_session_factory()() as db:
+        orphaned = db.scalars(
+            select(Job).where(Job.status.in_(IN_PROGRESS_STATUSES))
+        ).all()
+        for job in orphaned:
+            job.status = JobStatus.FAILED
+            job.error_message = "Job interrupted by server restart"
+        db.commit()
+        if orphaned:
+            logger.info("Marked %d interrupted job(s) as failed", len(orphaned))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _recover_orphaned_jobs()
     # Drop any previously-registered /media route (e.g. from a hot reload of
     # this module) before remounting the media directory, so static assets
     # are served fresh from the configured MEDIA_DIR.

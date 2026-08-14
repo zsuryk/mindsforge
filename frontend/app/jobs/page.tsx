@@ -1,11 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { RotateCcw, Trash2, Upload } from "lucide-react";
 
 import JobClips from "@/components/job-clips";
 import { StatusBadge } from "@/components/status-badge";
-import { Job, fetchJobs, submitJob } from "@/lib/api";
+import { Job, deleteJob, fetchJobs, retryJob, submitJob } from "@/lib/api";
+
+const IN_PROGRESS_STATUSES = new Set([
+  "PENDING",
+  "DOWNLOADING",
+  "TRANSCRIBING",
+  "EXTRACTING_CLIPS",
+]);
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -14,6 +21,7 @@ export default function JobsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -52,6 +60,32 @@ export default function JobsPage() {
       setError(err instanceof Error ? err.message : "Submission failed.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRetry = async (jobId: string) => {
+    setBusyJobId(jobId);
+    setError(null);
+    try {
+      await retryJob(jobId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Retry failed.");
+    } finally {
+      setBusyJobId(null);
+    }
+  };
+
+  const handleDelete = async (jobId: string) => {
+    setBusyJobId(jobId);
+    setError(null);
+    try {
+      await deleteJob(jobId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setBusyJobId(null);
     }
   };
 
@@ -150,7 +184,31 @@ export default function JobsPage() {
                       <p className="mt-1 text-xs text-slate-500">Clips ready</p>
                     )}
                   </div>
-                  <StatusBadge status={job.status} />
+                  <div className="flex shrink-0 items-center gap-3">
+                    <StatusBadge status={job.status} />
+                    {!IN_PROGRESS_STATUSES.has(job.status) && (
+                      <button
+                        type="button"
+                        onClick={() => handleRetry(job.id)}
+                        disabled={busyJobId === job.id}
+                        aria-label="Retry job"
+                        title="Retry"
+                        className="rounded-lg border border-slate-700 bg-slate-950 p-2 text-slate-300 transition-colors hover:border-indigo-500 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(job.id)}
+                      disabled={busyJobId === job.id}
+                      aria-label="Delete job"
+                      title="Delete"
+                      className="rounded-lg border border-slate-700 bg-slate-950 p-2 text-slate-300 transition-colors hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 {job.status === "COMPLETED" && <JobClips jobId={job.id} />}
               </li>

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.base import get_db
-from app.models.job import IN_PROGRESS_STATUSES, Job
+from app.models.job import IN_PROGRESS_STATUSES, Job, JobStatus
 from app.schemas.job import JobCreated, JobOut
 from app.services.pipeline import run_pipeline
 
@@ -103,3 +103,42 @@ def get_job(job_id: str, db: Session = Depends(get_db)) -> Job:
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return job
+
+
+@router.post("/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED, response_model=JobCreated)
+def retry_job(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> JobCreated:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.status in IN_PROGRESS_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Job is already being processed",
+        )
+
+    for clip in job.clips:
+        db.delete(clip)
+    job.status = JobStatus.PENDING
+    job.error_message = None
+    db.commit()
+    db.refresh(job)
+
+    if get_settings().PROCESS_JOBS_ON_SUBMIT:
+        background_tasks.add_task(run_pipeline, job.id)
+
+    return JobCreated(
+        job_id=job.id, status=job.status, message=f"Job {job.id} re-queued for processing"
+    )
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_job(job_id: str, db: Session = Depends(get_db)) -> None:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    db.delete(job)
+    db.commit()

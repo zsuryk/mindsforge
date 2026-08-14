@@ -182,4 +182,48 @@ describe("JobsPage", () => {
     await screen.findByText("FAILED");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("retries a failed job via the retry button", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse([makeJob({ status: "FAILED", error_message: "network down" })]),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ job_id: "job-1", status: "PENDING", message: "re-queued" }, 202),
+      )
+      .mockResolvedValueOnce(jsonResponse([makeJob({ status: "PENDING" })]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<JobsPage />);
+    await screen.findByText("FAILED");
+
+    await user.click(screen.getByRole("button", { name: /retry job/i }));
+
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "http://localhost:8000/api/v1/jobs/job-1/retry",
+    );
+    expect(fetchMock.mock.calls[1][1]).toEqual({ method: "POST" });
+    expect(await screen.findByText("PENDING")).toBeInTheDocument();
+  });
+
+  it("deletes a pending job via the delete button", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([makeJob()]))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<JobsPage />);
+    await screen.findByText("PENDING");
+
+    await user.click(screen.getByRole("button", { name: /delete job/i }));
+
+    expect(fetchMock.mock.calls[1][0]).toBe("http://localhost:8000/api/v1/jobs/job-1");
+    expect(fetchMock.mock.calls[1][1]).toEqual({ method: "DELETE" });
+    expect(await screen.findByText(/no jobs yet/i)).toBeInTheDocument();
+  });
 });

@@ -146,6 +146,21 @@ export async function submitJob(input: SubmitJobInput): Promise<JobCreated> {
   return res.json();
 }
 
+export async function retryJob(id: string): Promise<JobCreated> {
+  const res = await fetch(`${API_URL}/jobs/${id}/retry`, { method: "POST" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function deleteJob(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/jobs/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+}
+
 export type AgentMemory = {
   agent_id: string;
   memory: Record<string, unknown>;

@@ -6,12 +6,15 @@ from fastapi.testclient import TestClient
 from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
+from app.models.job import Job
 
 
 def make_clip(db, *, virality_score: int | None = None) -> Clip:
+    job = Job(id=str(uuid4()), title="Job 1")
+    db.add(job)
     clip = Clip(
         id=str(uuid4()),
-        job_id="job-1",
+        job_id=job.id,
         title="Clip",
         start_time=0.0,
         end_time=30.0,

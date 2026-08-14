@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  deleteJob,
   fetchAbExperiments,
   fetchAgentMemory,
   fetchClip,
@@ -9,6 +10,7 @@ import {
   fetchJobClips,
   fetchJobs,
   mediaUrl,
+  retryJob,
   startAbTest,
   submitJob,
   updateAgentMemory,
@@ -338,5 +340,35 @@ describe("fetchDashboardStats", () => {
     );
 
     await expect(fetchDashboardStats()).rejects.toThrow("boom");
+  });
+});
+
+describe("retryJob", () => {
+  it("posts to POST /jobs/{id}/retry and returns the re-queued job", async () => {
+    const created = { job_id: "abc", status: "PENDING", message: "re-queued" };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(created, 202));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await retryJob("abc");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/jobs/abc/retry",
+      { method: "POST" },
+    );
+    expect(result).toEqual(created);
+  });
+});
+
+describe("deleteJob", () => {
+  it("sends DELETE /jobs/{id}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteJob("abc");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/jobs/abc",
+      { method: "DELETE" },
+    );
   });
 });

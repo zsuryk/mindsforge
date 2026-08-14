@@ -3,7 +3,7 @@ from functools import lru_cache
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import BACKEND_DIR, get_settings
@@ -15,10 +15,20 @@ class Base(DeclarativeBase):
 
 @lru_cache
 def get_engine():
-    return create_engine(
+    engine = create_engine(
         get_settings().DATABASE_URL,
         connect_args={"check_same_thread": False},
     )
+    if engine.dialect.name == "sqlite":
+        # SQLite defaults to foreign keys off; the schema declares
+        # ON DELETE CASCADE, so enforce it on every connection.
+        @event.listens_for(engine, "connect")
+        def _enable_sqlite_fks(dbapi_connection, _connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+    return engine
 
 
 def init_db() -> None:

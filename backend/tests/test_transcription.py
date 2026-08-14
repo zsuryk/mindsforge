@@ -66,7 +66,7 @@ def test_transcribe_maps_verbose_json_to_segments(tmp_path, monkeypatch) -> None
 def test_transcribe_requires_api_key(tmp_path, monkeypatch) -> None:
     from app.core.config import get_settings
 
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "")
     get_settings.cache_clear()
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"wav")

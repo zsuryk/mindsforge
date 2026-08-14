@@ -196,7 +196,7 @@ def test_missing_groq_api_key_fails_job_with_descriptive_message(
     wav.write_bytes(b"fake wav bytes")
     monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
     monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "")
     get_settings.cache_clear()
 
     res = test_client.post(
@@ -233,7 +233,7 @@ def test_unconfigured_minds_fails_job_at_scoring_stage(
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
     _stub_pipeline_stages(monkeypatch, tmp_path)
-    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
     get_settings.cache_clear()
 
     res = test_client.post(
@@ -270,7 +270,7 @@ def test_clip_less_job_fails_when_minds_unconfigured(
     monkeypatch.setattr(
         media, "cut_clip", lambda source, dest, start, end: pytest.fail("cut called")
     )
-    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
     get_settings.cache_clear()
 
     res = test_client.post(
