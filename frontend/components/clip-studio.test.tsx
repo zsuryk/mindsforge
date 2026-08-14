@@ -2,6 +2,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ id: "clip-1" }),
+}));
+
 import ClipStudioPage from "../app/clips/[id]/page";
 import { Adaptation, Clip } from "@/lib/api";
 
@@ -57,7 +61,7 @@ describe("ClipStudioPage", () => {
   it("shows the loading state then the player and verdict", async () => {
     stubClipStudioFetch(makeScoredClip());
 
-    const { container } = render(<ClipStudioPage params={{ id: "clip-1" }} />);
+    const { container } = render(<ClipStudioPage />);
 
     expect(screen.getByText("Loading clip…")).toBeInTheDocument();
 
@@ -74,7 +78,7 @@ describe("ClipStudioPage", () => {
     const user = userEvent.setup();
     stubClipStudioFetch(makeScoredClip());
 
-    render(<ClipStudioPage params={{ id: "clip-1" }} />);
+    render(<ClipStudioPage />);
 
     const hooksCard = await screen.findByRole("heading", { name: /platform hooks/i });
     const card = hooksCard.closest("div") as HTMLElement;
@@ -131,7 +135,7 @@ describe("ClipStudioPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ClipStudioPage params={{ id: "clip-1" }} />);
+    render(<ClipStudioPage />);
 
     await user.click(await screen.findByRole("button", { name: /launch a\/b test/i }));
 
@@ -174,7 +178,7 @@ describe("ClipStudioPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ClipStudioPage params={{ id: "clip-1" }} />);
+    render(<ClipStudioPage />);
 
     await user.click(await screen.findByRole("button", { name: /launch a\/b test/i }));
     const dialog = screen.getByRole("dialog", { name: "Launch A/B test" });
@@ -187,7 +191,7 @@ describe("ClipStudioPage", () => {
     const unscored: Clip = { ...makeScoredClip(), virality_score: null, suggested_hooks: null };
     stubClipStudioFetch(unscored);
 
-    render(<ClipStudioPage params={{ id: "clip-1" }} />);
+    render(<ClipStudioPage />);
 
     expect(await screen.findByText(/no hooks yet/i)).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();

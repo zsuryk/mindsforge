@@ -165,11 +165,11 @@ describe("JobsPage", () => {
     const { container } = render(<JobsPage />);
 
     expect(await screen.findByText("Clips ready")).toBeInTheDocument();
+    expect(await screen.findByText("Best moment")).toBeInTheDocument();
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
     expect(video).toHaveAttribute("src", "http://localhost:8000/media/clips/job-1/clip-1.mp4");
     expect(video).toHaveAttribute("poster", "http://localhost:8000/media/clips/job-1/clip-1.png");
-    expect(await screen.findByText("Best moment")).toBeInTheDocument();
     expect(screen.getByText("hello world.")).toBeInTheDocument();
   });
 

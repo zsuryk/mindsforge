@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { ArrowLeft, FlaskConical, Quote } from "lucide-react";
 
 import LaunchAbTestModal from "@/components/launch-ab-test-modal";
@@ -15,7 +16,8 @@ function formatTime(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
 }
 
-export default function ClipStudioPage({ params }: { params: { id: string } }) {
+export default function ClipStudioPage() {
+  const { id } = useParams<{ id: string }>();
   const [clip, setClip] = useState<Clip | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<(typeof PLATFORMS)[number]["key"]>(
@@ -25,7 +27,7 @@ export default function ClipStudioPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchClip(params.id)
+    fetchClip(id)
       .then((result) => {
         if (!cancelled) setClip(result);
       })
@@ -35,7 +37,7 @@ export default function ClipStudioPage({ params }: { params: { id: string } }) {
     return () => {
       cancelled = true;
     };
-  }, [params.id]);
+  }, [id]);
 
   if (error) {
     return (
