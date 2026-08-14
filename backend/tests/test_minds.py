@@ -31,46 +31,128 @@ def _fresh_settings() -> None:
     get_settings.cache_clear()
 
 
-def test_fetch_memory_returns_context_tree(monkeypatch: pytest.MonkeyPatch) -> None:
+# --- local memory store ---
+
+
+def test_fetch_memory_returns_empty_tree_initially(
+    client: tuple[Any, Any],
+) -> None:
+    assert minds.fetch_memory("agent-1") == {}
+
+
+def test_update_memory_persists_key_value(client: tuple[Any, Any]) -> None:
+    assert minds.update_memory("agent-1", "brand_voice", "bold") is True
+    assert minds.fetch_memory("agent-1") == {"brand_voice": "bold"}
+
+
+def test_update_memory_overwrites_existing_key(client: tuple[Any, Any]) -> None:
+    minds.update_memory("agent-1", "k", 1)
+    minds.update_memory("agent-1", "k", 2)
+    assert minds.fetch_memory("agent-1") == {"k": 2}
+
+
+def test_fetch_memory_is_scoped_by_agent_id(client: tuple[Any, Any]) -> None:
+    minds.update_memory("agent-1", "k", "a")
+    assert minds.fetch_memory("agent-2") == {}
+
+
+def test_update_memory_stores_structured_values(client: tuple[Any, Any]) -> None:
+    minds.update_memory("agent-1", "ab_test_history", [{"experiment_id": "e1"}])
+    assert minds.fetch_memory("agent-1") == {
+        "ab_test_history": [{"experiment_id": "e1"}]
+    }
+
+
+# --- messaging flow ---
+
+
+def test_message_mind_sends_message_and_waits_for_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_minds(monkeypatch)
-    calls: list[tuple[Any, ...]] = []
+    posts: list[tuple[str, dict[str, Any]]] = []
+    gets: list[tuple[str, dict[str, Any] | None]] = []
 
-    def fake_get(url, headers, timeout):
-        calls.append((url, headers, timeout))
-        return FakeResponse({"brand_voice": "bold", "historical_insights": []})
+    def fake_post(path, payload):
+        posts.append((path, payload))
+        return FakeResponse({}, 200)
 
-    monkeypatch.setattr(minds.httpx, "get", fake_get)
+    def fake_get(path, params=None):
+        gets.append((path, params))
+        if params and params.get("limit") == 1:
+            return FakeResponse([], 200)
+        return FakeResponse([{"senderType": 0, "messageText": "hello reply"}], 200)
 
-    memory = minds.fetch_memory("agent-1")
+    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "_get", fake_get)
 
-    assert memory == {"brand_voice": "bold", "historical_insights": []}
-    url, headers, _ = calls[0]
-    assert url == f"{minds.MINDS_BUILDER_BASE_URL}/minds/agent-1/memory"
-    assert headers == {minds.BUILDER_API_KEY_HEADER: "test-builder-key"}
+    reply = minds._message_mind("agent-1", "prompt text")
+
+    assert reply == "hello reply"
+    assert posts[0][0] == "/v1/messaging/conversation"
+    assert posts[0][1] == {"alias": "mindsforge", "mindId": "agent-1"}
+    assert posts[1][0] == "/v1/messaging/message"
+    assert posts[1][1] == {"alias": "mindsforge", "messageText": "prompt text"}
+    assert gets[1][0] == "/v1/messaging/histories/mindsforge"
 
 
-def test_fetch_memory_raises_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_message_mind_ignores_human_echo_until_mind_replies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx, "get", lambda url, headers, timeout: FakeResponse({}, status_code=500)
+        minds, "_post", lambda path, payload: FakeResponse({}, 200)
     )
-    with pytest.raises(minds.MindsError, match="status 500"):
-        minds.fetch_memory("agent-1")
+    replies = [
+        FakeResponse([{"senderType": 1, "messageText": "prompt text"}], 200),
+        FakeResponse(
+            [{"senderType": 0, "messageText": "actual reply"}], 200
+        ),
+    ]
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse([], 200)
+        return replies.pop(0)
+
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    assert minds._message_mind("agent-1", "prompt text") == "actual reply"
 
 
-def test_fetch_memory_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+def test_message_mind_times_out_when_no_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(minds, "MESSAGE_REPLY_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(minds, "MESSAGE_REPLY_POLL_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(
+        minds, "_post", lambda path, payload: FakeResponse({}, 200)
+    )
+    monkeypatch.setattr(
+        minds,
+        "_get",
+        lambda path, params=None: FakeResponse(
+            [{"senderType": 1, "messageText": "prompt text"}], 200
+        ),
+    )
+
+    with pytest.raises(minds.MindsError, match="Timed out"):
+        minds._message_mind("agent-1", "prompt text")
+
+
+def test_headers_require_builder_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
     from app.core.config import get_settings
 
     get_settings.cache_clear()
     with pytest.raises(minds.MindsConfigError, match="MINDS_BUILDER_API_KEY"):
-        minds.fetch_memory("agent-1")
+        minds._headers()
 
 
-def test_fetch_memory_requires_agent_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_agent_id_requires_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.delenv("MINDS_AGENT_ID", raising=False)
+    monkeypatch.setenv("MINDS_AGENT_ID", "")
     from app.core.config import get_settings
 
     get_settings.cache_clear()
@@ -78,109 +160,30 @@ def test_fetch_memory_requires_agent_id(monkeypatch: pytest.MonkeyPatch) -> None
         minds._agent_id()
 
 
-def test_fetch_memory_raises_on_non_json_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure_minds(monkeypatch)
-
-    class NonJsonResponse:
-        status_code = 200
-
-        def json(self) -> Any:
-            raise ValueError("expected a JSON body")
-
-    monkeypatch.setattr(minds.httpx, "get", lambda url, headers, timeout: NonJsonResponse())
-    with pytest.raises(minds.MindsError, match="non-JSON"):
-        minds.fetch_memory("agent-1")
+# --- clip metadata generation ---
 
 
-def test_fetch_memory_raises_on_non_object_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx, "get", lambda url, headers, timeout: FakeResponse([], status_code=200)
-    )
-    with pytest.raises(minds.MindsError, match="unexpected shape"):
-        minds.fetch_memory("agent-1")
-
-
-def test_network_errors_are_wrapped_as_minds_errors(
+def test_generate_clip_metadata_parses_verdict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
+    captured: dict[str, Any] = {}
     monkeypatch.setattr(
-        minds.httpx,
-        "get",
-        lambda url, headers, timeout: (_ for _ in ()).throw(
-            httpx.TimeoutException("timed out")
-        ),
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: captured.update(agent_id=agent_id, prompt=prompt)
+        or '{"virality_score": 82, "suggested_titles": ["A", "B"], '
+        '"platform_hooks": {"youtube_shorts": ["s1"], "tiktok": ["t1"], "x": ["x1"]}}',
     )
-    with pytest.raises(minds.MindsError, match="timed out"):
-        minds.fetch_memory("agent-1")
-
-
-def test_update_memory_posts_key_value(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure_minds(monkeypatch)
-    calls: list[tuple[Any, ...]] = []
-
-    def fake_post(url, headers, json, timeout):
-        calls.append((url, headers, json))
-        return FakeResponse({"success": True})
-
-    monkeypatch.setattr(minds.httpx, "post", fake_post)
-
-    result = minds.update_memory("agent-1", "learned_insight", {"ctr": 0.03})
-
-    assert result is True
-    url, headers, body = calls[0]
-    assert url == f"{minds.MINDS_BUILDER_BASE_URL}/minds/agent-1/memory/update"
-    assert headers == {minds.BUILDER_API_KEY_HEADER: "test-builder-key"}
-    assert body == {"key": "learned_insight", "value": {"ctr": 0.03}}
-
-
-def test_update_memory_returns_false_when_success_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx, "post", lambda url, headers, json, timeout: FakeResponse({})
-    )
-    assert minds.update_memory("agent-1", "k", "v") is False
-
-
-def test_update_memory_returns_false_on_non_object_body(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx, "post", lambda url, headers, json, timeout: FakeResponse("true")
-    )
-    assert minds.update_memory("agent-1", "k", "v") is False
-
-
-def test_generate_clip_metadata_parses_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure_minds(monkeypatch)
-    calls: list[tuple[Any, ...]] = []
-
-    def fake_post(url, headers, json, timeout):
-        calls.append((url, json))
-        return FakeResponse(
-            {
-                "response": (
-                    '{"virality_score": 82, "suggested_titles": ["A", "B"], '
-                    '"platform_hooks": {"youtube_shorts": ["s1"], "tiktok": ["t1"], "x": ["x1"]}}'
-                )
-            }
-        )
-
-    monkeypatch.setattr(minds.httpx, "post", fake_post)
 
     metadata = minds.generate_clip_metadata("hello world.", duration_seconds=21.5)
 
     assert metadata.virality_score == 82
     assert metadata.suggested_titles == ["A", "B"]
     assert metadata.platform_hooks["tiktok"] == ["t1"]
-    url, body = calls[0]
-    assert url == f"{minds.MINDS_BUILDER_BASE_URL}/minds/agent-1/message"
-    assert "hello world." in body["prompt"]
-    assert "21.5s" in body["prompt"]
+    assert captured["agent_id"] == "agent-1"
+    assert "hello world." in captured["prompt"]
+    assert "21.5s" in captured["prompt"]
 
 
 def test_generate_clip_metadata_includes_memory_context(
@@ -188,23 +191,16 @@ def test_generate_clip_metadata_includes_memory_context(
 ) -> None:
     _configure_minds(monkeypatch)
     captured: dict[str, Any] = {}
-
-    def fake_post(url, headers, json, timeout):
-        captured["prompt"] = json["prompt"]
-        return FakeResponse(
-            {
-                "response": (
-                    '{"virality_score": 50, "suggested_titles": ["A"], '
-                    '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}'
-                )
-            }
-        )
-
-    monkeypatch.setattr(minds.httpx, "post", fake_post)
+    monkeypatch.setattr(
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: captured.update(prompt=prompt)
+        or '{"virality_score": 50, "suggested_titles": ["A"], '
+        '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}',
+    )
 
     minds.generate_clip_metadata(
-        "text",
-        memory_context="brand_voice: \"bold\"\nhistorical_insights: []",
+        "text", memory_context='brand_voice: "bold"\nhistorical_insights: []'
     )
 
     assert "brand_voice" in captured["prompt"]
@@ -216,21 +212,13 @@ def test_generate_clip_metadata_strips_markdown_fences(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse(
-            {
-                "response": (
-                    '```json\n{"virality_score": 10, "suggested_titles": ["A"], '
-                    '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}\n```'
-                )
-            }
-        ),
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: '```json\n{"virality_score": 10, "suggested_titles": ["A"], '
+        '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}\n```',
     )
 
-    metadata = minds.generate_clip_metadata("text")
-
-    assert metadata.virality_score == 10
+    assert minds.generate_clip_metadata("text").virality_score == 10
 
 
 def test_generate_clip_metadata_clamps_score_to_range(
@@ -238,16 +226,10 @@ def test_generate_clip_metadata_clamps_score_to_range(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse(
-            {
-                "response": (
-                    '{"virality_score": 150, "suggested_titles": ["A"], '
-                    '"platform_hooks": {}}'
-                )
-            }
-        ),
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: '{"virality_score": 150, "suggested_titles": ["A"], '
+        '"platform_hooks": {}}',
     )
 
     assert minds.generate_clip_metadata("text").virality_score == 100
@@ -257,11 +239,7 @@ def test_generate_clip_metadata_raises_on_invalid_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse({"response": "not json at all"}),
-    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "not json at all")
     with pytest.raises(minds.MindsError, match="Could not parse"):
         minds.generate_clip_metadata("text")
 
@@ -271,36 +249,18 @@ def test_generate_clip_metadata_raises_on_missing_fields(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse(
-            {"response": '{"virality_score": 50}'}
-        ),
+        minds, "_message_mind", lambda agent_id, prompt: '{"virality_score": 50}'
     )
     with pytest.raises(minds.MindsError, match="failed validation"):
         minds.generate_clip_metadata("text")
 
 
-def test_generate_clip_metadata_raises_on_missing_response_text(
+def test_generate_clip_metadata_raises_on_empty_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx, "post", lambda url, headers, json, timeout: FakeResponse({})
-    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "   ")
     with pytest.raises(minds.MindsError, match="missing 'response'"):
-        minds.generate_clip_metadata("text")
-
-
-def test_generate_clip_metadata_requires_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    with pytest.raises(minds.MindsError, match="MINDS_BUILDER_API_KEY"):
         minds.generate_clip_metadata("text")
 
 
@@ -313,10 +273,16 @@ def test_build_memory_context_renders_known_keys() -> None:
             "ab_test_history": [{"winning_variant_id": "v1"}],
         }
     )
-    assert "creator_id: \"creator-7\"" in context
-    assert "brand_voice: \"bold\"" in context
+    assert 'creator_id: "creator-7"' in context
+    assert 'brand_voice: "bold"' in context
     assert "historical_insights" in context
     assert "ab_test_history" in context
+
+
+def test_build_memory_context_falls_back_to_whole_tree() -> None:
+    context = minds.build_memory_context({"unexpected_key": {"nested": True}})
+    assert "unexpected_key" in context
+    assert context == '{"unexpected_key": {"nested": true}}'
 
 
 VARIANTS = [
@@ -325,28 +291,20 @@ VARIANTS = [
 ]
 
 
-def test_decide_experiment_winner_parses_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_decide_experiment_winner_parses_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_minds(monkeypatch)
     captured: dict[str, Any] = {}
-
-    def fake_post(url, headers, json, timeout):
-        captured["prompt"] = json["prompt"]
-        return FakeResponse(
-            {
-                "response": (
-                    '{"winning_variant_id": "v1", '
-                    '"reasoning": "Hook A held viewers longer; reuse this formula."}'
-                )
-            }
-        )
-
-    monkeypatch.setattr(minds.httpx, "post", fake_post)
+    monkeypatch.setattr(
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: captured.update(prompt=prompt)
+        or '{"winning_variant_id": "v1", "reasoning": "Hook A held viewers longer; reuse this formula."}',
+    )
 
     verdict = minds.decide_experiment_winner(
-        "youtube_shorts",
-        VARIANTS,
-        "the clip transcript",
-        memory_context="brand_voice: \"bold\"",
+        "youtube_shorts", VARIANTS, "the clip transcript", memory_context='brand_voice: "bold"'
     )
 
     assert verdict.winning_variant_id == "v1"
@@ -362,19 +320,12 @@ def test_decide_experiment_winner_strips_markdown_fences(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse(
-            {
-                "response": (
-                    '```json\n{"winning_variant_id": "v2", '
-                    '"reasoning": "debate-style hook won."}\n```'
-                )
-            }
-        ),
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: '```json\n{"winning_variant_id": "v2", '
+        '"reasoning": "debate-style hook won."}\n```',
     )
-    verdict = minds.decide_experiment_winner("x", VARIANTS, "t")
-    assert verdict.winning_variant_id == "v2"
+    assert minds.decide_experiment_winner("x", VARIANTS, "t").winning_variant_id == "v2"
 
 
 def test_decide_experiment_winner_rejects_unknown_winner_id(
@@ -382,15 +333,9 @@ def test_decide_experiment_winner_rejects_unknown_winner_id(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse(
-            {
-                "response": (
-                    '{"winning_variant_id": "ghost", "reasoning": "it felt right"}'
-                )
-            }
-        ),
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: '{"winning_variant_id": "ghost", "reasoning": "it felt right"}',
     )
     with pytest.raises(minds.MindsError, match="unknown variant id"):
         minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
@@ -401,49 +346,20 @@ def test_decide_experiment_winner_rejects_empty_reasoning(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse(
-            {"response": '{"winning_variant_id": "v1", "reasoning": "   "}'}
-        ),
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: '{"winning_variant_id": "v1", "reasoning": "   "}',
     )
     with pytest.raises(minds.MindsError, match="failed validation"):
         minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
 
 
-def test_decide_experiment_winner_raises_on_missing_response_text(
+def test_decide_experiment_winner_raises_on_empty_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx, "post", lambda url, headers, json, timeout: FakeResponse({})
-    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "  ")
     with pytest.raises(minds.MindsError, match="missing 'response'"):
-        minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
-
-
-def test_decide_experiment_winner_raises_on_non_200(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse({}, status_code=500),
-    )
-    with pytest.raises(minds.MindsError, match="status 500"):
-        minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
-
-
-def test_decide_experiment_winner_requires_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    with pytest.raises(minds.MindsError, match="MINDS_BUILDER_API_KEY"):
         minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
 
 
@@ -479,15 +395,15 @@ def test_generate_adaptation_features_parses_long_form_manifest(
 ) -> None:
     _configure_minds(monkeypatch)
     captured: dict[str, Any] = {}
-
-    def fake_post(url, headers, json, timeout):
-        captured["prompt"] = json["prompt"]
-        return FakeResponse({"response": _youtube_long_form_reply()})
-
-    monkeypatch.setattr(minds.httpx, "post", fake_post)
+    monkeypatch.setattr(
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: captured.update(prompt=prompt)
+        or _youtube_long_form_reply(),
+    )
 
     manifest = minds.generate_adaptation_features(
-        CLIP, "youtube", "LONG_FORM", SEGMENTS, memory_context="brand_voice: \"bold\""
+        CLIP, "youtube", "LONG_FORM", SEGMENTS, memory_context='brand_voice: "bold"'
     )
 
     assert manifest.platform == "youtube"
@@ -512,11 +428,7 @@ def test_generate_adaptation_features_accepts_surface_echo(
     echoed = _youtube_long_form_reply().replace(
         '{"chapters"', '{"surface": "LONG_FORM", "chapters"', 1
     )
-    monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse({"response": echoed}),
-    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: echoed)
     manifest = minds.generate_adaptation_features(CLIP, "youtube", "LONG_FORM", SEGMENTS)
     assert manifest.surface == "LONG_FORM"
 
@@ -528,11 +440,7 @@ def test_generate_adaptation_features_rejects_surface_mismatch(
     echoed = _youtube_long_form_reply().replace(
         '{"chapters"', '{"surface": "SHORTS", "chapters"', 1
     )
-    monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse({"response": echoed}),
-    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: echoed)
     with pytest.raises(minds.MindsError, match="expected 'LONG_FORM'"):
         minds.generate_adaptation_features(CLIP, "youtube", "LONG_FORM", SEGMENTS)
 
@@ -547,11 +455,7 @@ def test_generate_adaptation_features_enforces_three_thumbnail_briefs(
         '{"frame_timestamp": 4.0, "overlay_text": "two"}], '
         '"platform_hooks": ["hook"]}'
     )
-    monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse({"response": reply}),
-    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: reply)
     with pytest.raises(minds.MindsError, match="exactly 3 thumbnail_briefs"):
         minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
 
@@ -561,11 +465,9 @@ def test_generate_adaptation_features_validates_tiktok_post_shape(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse(
-            {"response": '{"overlay_spec": [{"text": "t", "placement": "center", "style": "bold"}]}'}
-        ),
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt: '{"overlay_spec": [{"text": "t", "placement": "center", "style": "bold"}]}',
     )
     with pytest.raises(minds.MindsError, match="requires caption_style"):
         minds.generate_adaptation_features(CLIP, "tiktok", "POST", SEGMENTS)
@@ -576,9 +478,7 @@ def test_generate_adaptation_features_requires_x_caption_and_hashtags(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse({"response": '{"caption": "hot take"}'}),
+        minds, "_message_mind", lambda agent_id, prompt: '{"caption": "hot take"}'
     )
     with pytest.raises(minds.MindsError, match="requires hashtags"):
         minds.generate_adaptation_features(CLIP, "x", "POST", SEGMENTS)
@@ -588,28 +488,30 @@ def test_generate_adaptation_features_raises_on_invalid_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds.httpx,
-        "post",
-        lambda url, headers, json, timeout: FakeResponse({"response": "not json"}),
-    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "not json")
     with pytest.raises(minds.MindsError, match="Could not parse"):
         minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
 
 
-def test_generate_adaptation_features_requires_credentials(
+def test_generate_adaptation_features_raises_on_empty_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    with pytest.raises(minds.MindsError, match="MINDS_BUILDER_API_KEY"):
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "")
+    with pytest.raises(minds.MindsError, match="missing 'response'"):
         minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
 
 
-def test_build_memory_context_falls_back_to_whole_tree() -> None:
-    context = minds.build_memory_context({"unexpected_key": {"nested": True}})
-    assert "unexpected_key" in context
-    assert context == '{"unexpected_key": {"nested": true}}'
+def test_network_errors_are_wrapped_as_minds_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "post",
+        lambda url, headers, json, timeout: (_ for _ in ()).throw(
+            httpx.TimeoutException("timed out")
+        ),
+    )
+    with pytest.raises(minds.MindsError, match="timed out"):
+        minds._post("/v1/messaging/message", {})

@@ -95,7 +95,7 @@ def test_get_memory_returns_503_when_agent_id_not_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.delenv("MINDS_AGENT_ID", raising=False)
+    monkeypatch.setenv("MINDS_AGENT_ID", "")
     from app.core.config import get_settings
 
     get_settings.cache_clear()
@@ -112,7 +112,7 @@ def test_update_memory_returns_503_when_agent_id_not_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.delenv("MINDS_AGENT_ID", raising=False)
+    monkeypatch.setenv("MINDS_AGENT_ID", "")
     from app.core.config import get_settings
 
     get_settings.cache_clear()

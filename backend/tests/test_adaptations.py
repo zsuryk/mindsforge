@@ -344,7 +344,13 @@ def test_success_without_minds_persists_features_locally(
 
 def test_unconfigured_minds_fails_adaptation(
     client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
+    monkeypatch.setenv("MINDS_AGENT_ID", "")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
     test_client, tmp_path = client
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)

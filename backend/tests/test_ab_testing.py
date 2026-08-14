@@ -9,16 +9,19 @@ from fastapi.testclient import TestClient
 from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
+from app.models.job import Job
 from app.services import ab_testing, minds
 
 
 def make_clip(db, tmp_path: Path, title: str = "My clip") -> Clip:
+    job = Job(id=str(uuid4()), title="Job 1")
+    db.add(job)
     thumb = tmp_path / "media" / "clips" / "job-1" / "thumb.png"
     thumb.parent.mkdir(parents=True, exist_ok=True)
     thumb.write_bytes(b"png")
     clip = Clip(
         id=str(uuid4()),
-        job_id="job-1",
+        job_id=job.id,
         title=title,
         start_time=0.0,
         end_time=30.0,
@@ -377,7 +380,13 @@ def test_mind_failure_fails_experiment_with_error_message(
 
 def test_unconfigured_minds_fails_experiment_at_conclusion(
     client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
+    monkeypatch.setenv("MINDS_AGENT_ID", "")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
     test_client, tmp_path = client
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
@@ -517,18 +526,17 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
 
     captured: dict[str, object] = {}
 
-    def fake_post(path, payload):
-        if path.endswith("/message"):
-            captured["path"] = path
-            captured["prompt"] = payload["prompt"]
-        return FakeResponse()
+    def fake_message_mind(agent_id, prompt):
+        captured["agent_id"] = agent_id
+        captured["prompt"] = prompt
+        return '{"winning_variant_id": "v1", "reasoning": "A won"}'
 
-    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "_message_mind", fake_message_mind)
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
-    assert captured["path"] == "/minds/agent-1/message"
+    assert captured["agent_id"] == "agent-1"
     prompt = captured["prompt"]
     assert isinstance(prompt, str)
     assert "thumbnail: /media/adaptations/adapt-1/thumb_1.png" in prompt

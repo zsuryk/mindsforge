@@ -1,17 +1,31 @@
 import json
 import logging
+import time
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
+from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.db.base import get_session_factory
+from app.models.memory import MemoryEntry
 
 logger = logging.getLogger(__name__)
 
-MINDS_BUILDER_BASE_URL = "https://build.hellominds.ai/api/v1"
+MINDS_BUILDER_BASE_URL = "https://api.build.hellominds.ai"
 BUILDER_API_KEY_HEADER = "X-Api-Key"
 HTTP_TIMEOUT_SECONDS = 30.0
+
+# One conversation per Mind carries all of MindsForge's messages. The Mind
+# replies asynchronously, so generation calls send a message then poll the
+# conversation history until a Mind reply arrives.
+MESSAGING_ALIAS = "mindsforge"
+MESSAGE_REPLY_TIMEOUT_SECONDS = 180.0
+MESSAGE_REPLY_POLL_INTERVAL_SECONDS = 2.0
+
+# Mind replies arrive as senderType 0 (human messages are senderType 1).
+MIND_SENDER_TYPE = 0
 
 MEMORY_CONTEXT_KEYS = (
     "creator_id",
@@ -189,11 +203,12 @@ def _decode_json(response: httpx.Response, context: str) -> Any:
         raise MindsError(f"{context} returned a non-JSON response") from exc
 
 
-def _get(path: str) -> httpx.Response:
+def _get(path: str, params: dict[str, Any] | None = None) -> httpx.Response:
     try:
         response = httpx.get(
             f"{MINDS_BUILDER_BASE_URL}{path}",
             headers=_headers(),
+            params=params,
             timeout=HTTP_TIMEOUT_SECONDS,
         )
     except httpx.RequestError as exc:
@@ -215,25 +230,95 @@ def _post(path: str, payload: dict[str, Any]) -> httpx.Response:
 
 
 def fetch_memory(agent_id: str) -> dict[str, Any]:
-    """Fetch the Mind's context tree (`GET /minds/{agent_id}/memory`)."""
-    response = _get(f"/minds/{agent_id}/memory")
-    if response.status_code != 200:
-        raise MindsError(f"Memory fetch failed with status {response.status_code}")
-    memory = _decode_json(response, "Memory fetch")
-    if not isinstance(memory, dict):
-        raise MindsError("Memory fetch returned an unexpected shape")
-    return memory
+    """Return the Mind's persistent context tree as a key/value dict.
+
+    The Minds Builder API no longer stores memory, so the tree is persisted
+    locally (SQLite) and keyed by agent id.
+    """
+    with get_session_factory()() as db:
+        rows = db.scalars(
+            select(MemoryEntry).where(MemoryEntry.agent_id == agent_id)
+        ).all()
+        return {row.key: row.value for row in rows}
 
 
 def update_memory(agent_id: str, key: str, value: Any) -> bool:
-    """Persist an insight key/value on the Mind (`POST /minds/{agent_id}/memory/update`)."""
-    response = _post(f"/minds/{agent_id}/memory/update", {"key": key, "value": value})
+    """Persist an insight key/value to the local memory tree."""
+    with get_session_factory()() as db:
+        entry = db.scalar(
+            select(MemoryEntry).where(
+                MemoryEntry.agent_id == agent_id, MemoryEntry.key == key
+            )
+        )
+        if entry is None:
+            db.add(MemoryEntry(agent_id=agent_id, key=key, value=value))
+        else:
+            entry.value = value
+        db.commit()
+    return True
+
+
+def _ensure_conversation(agent_id: str) -> None:
+    """Create the message conversation for this Mind if it does not exist."""
+    response = _post("/v1/messaging/conversation", {"alias": MESSAGING_ALIAS, "mindId": agent_id})
+    if response.status_code in (200, 409):
+        return
+    raise MindsError(f"Failed to create conversation with status {response.status_code}")
+
+
+def _latest_history_fingerprint() -> str | None:
+    response = _get(
+        f"/v1/messaging/histories/{MESSAGING_ALIAS}", params={"limit": 1}
+    )
     if response.status_code != 200:
-        raise MindsError(f"Memory update failed with status {response.status_code}")
-    payload = _decode_json(response, "Memory update")
-    if not isinstance(payload, dict):
-        return False
-    return bool(payload.get("success"))
+        raise MindsError(f"History fetch failed with status {response.status_code}")
+    rows = _decode_json(response, "History fetch")
+    if not isinstance(rows, list) or not rows:
+        return None
+    fingerprint = rows[0].get("fingerprint")
+    return str(fingerprint) if fingerprint else None
+
+
+def _is_mind_reply(row: dict[str, Any]) -> bool:
+    sender_type = row.get("senderType")
+    if sender_type is None:
+        sender_type = row.get("partyType")
+    return sender_type == MIND_SENDER_TYPE
+
+
+def _message_mind(agent_id: str, prompt: str) -> str:
+    """Send a prompt to the Mind and block until it replies, returning the text.
+
+    The Builder API messaging flow is asynchronous: create the conversation,
+    POST the message, then poll history for a Mind reply (senderType 0).
+    """
+    _ensure_conversation(agent_id)
+    cursor = _latest_history_fingerprint()
+    response = _post(
+        "/v1/messaging/message", {"alias": MESSAGING_ALIAS, "messageText": prompt}
+    )
+    if response.status_code != 200:
+        raise MindsError(f"Message send failed with status {response.status_code}")
+
+    deadline = time.monotonic() + MESSAGE_REPLY_TIMEOUT_SECONDS
+    while True:
+        history = _get(
+            f"/v1/messaging/histories/{MESSAGING_ALIAS}",
+            params={"limit": 50, **({"after": cursor} if cursor else {})},
+        )
+        if history.status_code != 200:
+            raise MindsError(f"History fetch failed with status {history.status_code}")
+        rows = _decode_json(history, "History fetch")
+        if not isinstance(rows, list):
+            raise MindsError("History fetch returned an unexpected shape")
+        for row in rows:
+            if _is_mind_reply(row):
+                text = row.get("messageText")
+                if isinstance(text, str) and text.strip():
+                    return text
+        if time.monotonic() > deadline:
+            raise MindsError("Timed out waiting for a Mind reply")
+        time.sleep(MESSAGE_REPLY_POLL_INTERVAL_SECONDS)
 
 
 def build_memory_context(memory: dict[str, Any]) -> str:
@@ -327,12 +412,7 @@ def generate_clip_metadata(
     prompt = _build_metadata_prompt(
         transcript, duration_seconds=duration_seconds, memory_context=memory_context
     )
-    response = _post(f"/minds/{_agent_id()}/message", {"prompt": prompt})
-    if response.status_code != 200:
-        raise MindsError(
-            f"Clip metadata generation failed with status {response.status_code}"
-        )
-    message = response.json().get("response")
+    message = _message_mind(_agent_id(), prompt)
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Clip metadata response missing 'response' text")
     return _parse_metadata(message)
@@ -400,12 +480,7 @@ def decide_experiment_winner(
     can fail the experiment closed instead of falling back to metrics.
     """
     prompt = _build_winner_prompt(platform, variants, transcript, memory_context)
-    response = _post(f"/minds/{_agent_id()}/message", {"prompt": prompt})
-    if response.status_code != 200:
-        raise MindsError(
-            f"Experiment winner decision failed with status {response.status_code}"
-        )
-    message = response.json().get("response")
+    message = _message_mind(_agent_id(), prompt)
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Experiment verdict response missing 'response' text")
     verdict = _parse_winner_verdict(message)
@@ -525,12 +600,7 @@ def generate_adaptation_features(
     unparseable or invalid manifests) so the adaptation fails closed.
     """
     prompt = _build_adaptation_prompt(clip, platform, surface, segments, memory_context)
-    response = _post(f"/minds/{_agent_id()}/message", {"prompt": prompt})
-    if response.status_code != 200:
-        raise MindsError(
-            f"Adaptation features generation failed with status {response.status_code}"
-        )
-    message = response.json().get("response")
+    message = _message_mind(_agent_id(), prompt)
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Adaptation features response missing 'response' text")
     return _parse_adaptation_features(message, platform, surface)
