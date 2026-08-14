@@ -56,7 +56,22 @@ def start_ab_test(
     if clip is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found")
     titles = [title.strip() for title in payload.titles if title and title.strip()]
-    if len(set(titles)) < 2:
+    variant_titles = titles
+
+    if payload.variant_kind.value == "THUMBNAIL":
+        thumbnail_paths = [
+            path for path in payload.thumbnail_paths if path and path.strip()
+        ]
+        if len(set(thumbnail_paths)) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Provide at least two distinct thumbnail variants",
+            )
+        if len(set(titles)) < 2:
+            variant_titles = [
+                f"Thumbnail {i}" for i in range(1, len(thumbnail_paths) + 1)
+            ]
+    elif len(set(titles)) < 2:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Provide at least two distinct variant titles",
@@ -65,17 +80,22 @@ def start_ab_test(
     experiment = AbExperiment(
         clip_id=clip.id,
         platform=payload.platform,
+        variant_kind=payload.variant_kind,
         status=AbExperimentStatus.ACTIVE,
         variants=[
             {
                 "variant_id": str(uuid4()),
                 "title": title,
-                "thumbnail_path": clip.thumbnail_path,
+                "thumbnail_path": (
+                    thumbnail_paths[index]
+                    if payload.variant_kind.value == "THUMBNAIL"
+                    else clip.thumbnail_path
+                ),
                 "ctr": 0.0,
                 "views": 0,
                 "clicks": 0,
             }
-            for title in titles
+            for index, title in enumerate(variant_titles)
         ],
     )
     db.add(experiment)

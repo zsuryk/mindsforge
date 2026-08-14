@@ -28,6 +28,7 @@ def _to_out(adaptation: ClipAdaptation) -> AdaptationOut:
                 id=variant["id"],
                 frame_timestamp=variant.get("frame_timestamp") or 0.0,
                 overlay_text=variant.get("overlay_text") or "",
+                file_path=variant.get("file_path"),
                 url=media_url(variant.get("file_path")) or "",
             )
             for variant in (adaptation.assets.get("thumbnail_variants") or [])

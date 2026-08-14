@@ -18,7 +18,9 @@ function activeExperiment(): AbExperiment {
     clip_id: "clip-1",
     clip_title: "The big reveal",
     platform: "youtube_shorts",
+    variant_kind: "TITLE",
     status: "ACTIVE",
+    error_message: null,
     variants: [
       {
         variant_id: "v1",
@@ -48,7 +50,9 @@ function concludedExperiment(): AbExperiment {
     clip_id: "clip-2",
     clip_title: "The second reveal",
     platform: "tiktok",
+    variant_kind: "TITLE",
     status: "CONCLUDED",
+    error_message: null,
     variants: [
       {
         variant_id: "w1",

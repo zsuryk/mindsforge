@@ -197,10 +197,17 @@ function ActiveExperimentCard({
             {platformLabel(experiment.platform)} · {experiment.variants.length} variants
           </p>
         </div>
-        <span className="flex items-center gap-1.5 rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-300">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400" />
-          ACTIVE
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="flex items-center gap-1.5 rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-300">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400" />
+            ACTIVE
+          </span>
+          {experiment.variant_kind === "THUMBNAIL" && (
+            <span className="rounded-full border border-slate-600 bg-slate-800/60 px-2.5 py-1 text-xs font-medium text-slate-300">
+              thumbnail variants
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2.5">

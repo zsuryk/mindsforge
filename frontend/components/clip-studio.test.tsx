@@ -3,13 +3,26 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ClipStudioPage from "../app/clips/[id]/page";
-import { Clip } from "@/lib/api";
+import { Adaptation, Clip } from "@/lib/api";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function stubClipStudioFetch(clip: Clip, adaptations: Adaptation[] = []) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/adaptations")) {
+        return Promise.resolve(jsonResponse(adaptations));
+      }
+      return Promise.resolve(jsonResponse(clip));
+    }),
+  );
 }
 
 function makeScoredClip(): Clip {
@@ -42,7 +55,7 @@ afterEach(() => {
 
 describe("ClipStudioPage", () => {
   it("shows the loading state then the player and verdict", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(makeScoredClip())));
+    stubClipStudioFetch(makeScoredClip());
 
     const { container } = render(<ClipStudioPage params={{ id: "clip-1" }} />);
 
@@ -59,7 +72,7 @@ describe("ClipStudioPage", () => {
 
   it("renders a real scored clip with distinct per-platform hooks in tabs", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(makeScoredClip())));
+    stubClipStudioFetch(makeScoredClip());
 
     render(<ClipStudioPage params={{ id: "clip-1" }} />);
 
@@ -83,6 +96,7 @@ describe("ClipStudioPage", () => {
       clip_id: "clip-1",
       clip_title: "The big reveal",
       platform: "youtube_shorts",
+      variant_kind: "TITLE",
       status: "ACTIVE",
       variants: [
         {
@@ -105,10 +119,16 @@ describe("ClipStudioPage", () => {
       created_at: "2026-08-11T10:00:00Z",
       concluded_at: null,
     };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(makeScoredClip()))
-      .mockResolvedValueOnce(jsonResponse(created, 201));
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/ab-tests/start")) {
+        return Promise.resolve(jsonResponse(created, 201));
+      }
+      if (url.includes("/adaptations")) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      return Promise.resolve(jsonResponse(makeScoredClip()));
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ClipStudioPage params={{ id: "clip-1" }} />);
@@ -126,22 +146,32 @@ describe("ClipStudioPage", () => {
       await within(dialog).findByText(/a\/b test launched/i),
     ).toBeInTheDocument();
 
-    const [url, init] = fetchMock.mock.calls[1];
+    const [url, init] = fetchMock.mock.calls.find(
+      ([callUrl]) => String(callUrl).includes("/ab-tests/start"),
+    ) as unknown as [string, RequestInit];
     expect(url).toBe("http://localhost:8000/api/v1/ab-tests/start");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({
+    expect(JSON.parse(String(init.body))).toEqual({
       clip_id: "clip-1",
       platform: "youtube_shorts",
       titles: ["The reveal you missed", "Why nobody talks about this", "Watch until the end"],
+      variant_kind: "TITLE",
+      thumbnail_paths: [],
     });
   });
 
   it("shows the launch error when the API rejects", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(makeScoredClip()))
-      .mockResolvedValueOnce(jsonResponse({ detail: "Clip not found" }, 404));
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/ab-tests/start")) {
+        return Promise.resolve(jsonResponse({ detail: "Clip not found" }, 404));
+      }
+      if (url.includes("/adaptations")) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      return Promise.resolve(jsonResponse(makeScoredClip()));
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ClipStudioPage params={{ id: "clip-1" }} />);
@@ -155,7 +185,7 @@ describe("ClipStudioPage", () => {
 
   it("shows a pending state for unscored clips", async () => {
     const unscored: Clip = { ...makeScoredClip(), virality_score: null, suggested_hooks: null };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(unscored)));
+    stubClipStudioFetch(unscored);
 
     render(<ClipStudioPage params={{ id: "clip-1" }} />);
 

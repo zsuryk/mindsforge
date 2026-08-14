@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, FlaskConical, Quote } from "lucide-react";
 
 import LaunchAbTestModal from "@/components/launch-ab-test-modal";
+import AdaptationStudio from "@/components/adaptation-studio";
 import ViralityGauge, { viralityColor, viralityLabel } from "@/components/virality-gauge";
 import { Clip, fetchClip, mediaUrl } from "@/lib/api";
 import { PLATFORMS } from "@/lib/platforms";
@@ -162,6 +163,8 @@ export default function ClipStudioPage({ params }: { params: { id: string } }) {
           </div>
         </div>
       </div>
+
+      <AdaptationStudio clipId={clip.id} />
 
       <LaunchAbTestModal
         open={modalOpen}

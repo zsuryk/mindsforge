@@ -19,6 +19,7 @@ class AdaptationThumbnailVariantOut(BaseModel):
     id: str
     frame_timestamp: float
     overlay_text: str
+    file_path: str | None = None
     url: str
 
 

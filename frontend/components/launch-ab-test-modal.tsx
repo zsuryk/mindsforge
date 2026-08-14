@@ -4,37 +4,57 @@ import { useEffect, useState } from "react";
 import { FlaskConical, Rocket, X } from "lucide-react";
 import Link from "next/link";
 
-import { startAbTest } from "@/lib/api";
+import { AdaptationThumbnailVariant, mediaUrl, startAbTest } from "@/lib/api";
 import { PLATFORMS } from "@/lib/platforms";
+
+const EMPTY_TITLES: string[] = [];
+const EMPTY_VARIANTS: AdaptationThumbnailVariant[] = [];
 
 export default function LaunchAbTestModal({
   open,
   onClose,
   clipId,
-  suggestedTitles,
+  suggestedTitles = EMPTY_TITLES,
+  variantKind = "TITLE",
+  thumbnailVariants = EMPTY_VARIANTS,
+  platform: initialPlatform = "youtube_shorts",
 }: {
   open: boolean;
   onClose: () => void;
   clipId: string;
   suggestedTitles: string[];
+  variantKind?: "TITLE" | "THUMBNAIL";
+  thumbnailVariants?: AdaptationThumbnailVariant[];
+  platform?: string;
 }) {
-  const [platform, setPlatform] = useState<string>("youtube_shorts");
+  const [platform, setPlatform] = useState<string>(initialPlatform);
+  const [kind, setKind] = useState<"TITLE" | "THUMBNAIL">(variantKind);
   const [selected, setSelected] = useState<string[]>(suggestedTitles);
+  const [selectedThumbs, setSelectedThumbs] = useState<string[]>(
+    thumbnailVariants.map((variant) => variant.id),
+  );
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchedId, setLaunchedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setPlatform("youtube_shorts");
+      setPlatform(initialPlatform);
+      setKind(variantKind);
       setSelected(suggestedTitles);
+      setSelectedThumbs(thumbnailVariants.map((variant) => variant.id));
       setLaunching(false);
       setLaunchError(null);
       setLaunchedId(null);
     }
-  }, [open, suggestedTitles]);
+  }, [open, variantKind, thumbnailVariants, suggestedTitles, initialPlatform]);
 
   if (!open) return null;
+
+  const thumbnailMode = kind === "THUMBNAIL";
+  const usableThumbs = thumbnailMode
+    ? thumbnailVariants.filter((variant) => variant.file_path)
+    : [];
 
   const toggleTitle = (title: string) => {
     setSelected((current) =>
@@ -44,11 +64,39 @@ export default function LaunchAbTestModal({
     );
   };
 
+  const toggleThumb = (id: string) => {
+    setSelectedThumbs((current) =>
+      current.includes(id)
+        ? current.filter((t) => t !== id)
+        : [...current, id],
+    );
+  };
+
+  const canLaunch =
+    !launching &&
+    (thumbnailMode
+      ? usableThumbs.length >= 2 && selectedThumbs.length >= 2
+      : selected.length >= 2);
+
   const handleLaunch = async () => {
     setLaunching(true);
     setLaunchError(null);
     try {
-      const experiment = await startAbTest({ clipId, platform, titles: selected });
+      const pickedThumbs = thumbnailMode
+        ? thumbnailVariants.filter((variant) => selectedThumbs.includes(variant.id))
+        : [];
+      const titles = thumbnailMode
+        ? pickedThumbs.map((variant) => variant.overlay_text || variant.id)
+        : selected;
+      const experiment = await startAbTest({
+        clipId,
+        platform,
+        titles,
+        variantKind: thumbnailMode ? "THUMBNAIL" : "TITLE",
+        thumbnailPaths: thumbnailMode
+          ? pickedThumbs.map((variant) => variant.file_path ?? "")
+          : [],
+      });
       setLaunchedId(experiment.id);
     } catch (err) {
       setLaunchError(err instanceof Error ? err.message : "Failed to launch A/B test");
@@ -104,35 +152,99 @@ export default function LaunchAbTestModal({
               ))}
             </select>
 
-            <fieldset className="mb-4">
-              <legend className="mb-2 text-sm font-medium text-slate-300">
-                Variants (titles)
-              </legend>
-              <div className="space-y-2">
-                {suggestedTitles.length === 0 ? (
-                  <p className="text-sm text-slate-500">No suggested titles yet.</p>
-                ) : (
-                  suggestedTitles.map((title) => (
-                    <label
-                      key={title}
-                      className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200 hover:border-slate-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(title)}
-                        onChange={() => toggleTitle(title)}
-                        className="mt-0.5 accent-indigo-500"
-                      />
-                      <span className="leading-snug">{title}</span>
-                    </label>
-                  ))
-                )}
+            {thumbnailVariants.length >= 2 && (
+              <div className="mb-4 flex gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1">
+                <button
+                  type="button"
+                  onClick={() => setKind("TITLE")}
+                  aria-selected={!thumbnailMode}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                    !thumbnailMode
+                      ? "bg-indigo-500 text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Title variants
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKind("THUMBNAIL")}
+                  aria-selected={thumbnailMode}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                    thumbnailMode
+                      ? "bg-indigo-500 text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Thumbnail variants
+                </button>
               </div>
-            </fieldset>
+            )}
+
+            {thumbnailMode ? (
+              <fieldset className="mb-4">
+                <legend className="mb-2 text-sm font-medium text-slate-300">
+                  Variants (rendered thumbnails)
+                </legend>
+                {usableThumbs.length === 0 ? (
+                  <p className="text-sm text-slate-500">No rendered thumbnails yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {usableThumbs.map((variant) => (
+                      <label
+                        key={variant.id}
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-sm text-slate-200 hover:border-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedThumbs.includes(variant.id)}
+                          onChange={() => toggleThumb(variant.id)}
+                          className="accent-indigo-500"
+                        />
+                        <img
+                          src={mediaUrl(variant.url)}
+                          alt={variant.overlay_text || variant.id}
+                          className="h-12 w-20 shrink-0 rounded-md object-cover"
+                        />
+                        <span className="leading-snug">
+                          {variant.overlay_text || variant.id}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+            ) : (
+              <fieldset className="mb-4">
+                <legend className="mb-2 text-sm font-medium text-slate-300">
+                  Variants (titles)
+                </legend>
+                <div className="space-y-2">
+                  {suggestedTitles.length === 0 ? (
+                    <p className="text-sm text-slate-500">No suggested titles yet.</p>
+                  ) : (
+                    suggestedTitles.map((title) => (
+                      <label
+                        key={title}
+                        className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200 hover:border-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(title)}
+                          onChange={() => toggleTitle(title)}
+                          className="mt-0.5 accent-indigo-500"
+                        />
+                        <span className="leading-snug">{title}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </fieldset>
+            )}
 
             <button
               onClick={handleLaunch}
-              disabled={selected.length < 2 || launching}
+              disabled={!canLaunch}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Rocket className="h-4 w-4" />

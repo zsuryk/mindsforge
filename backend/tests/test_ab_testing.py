@@ -153,6 +153,59 @@ def test_start_ab_test_requires_two_distinct_titles(
     assert single.status_code == 422
 
 
+def test_start_ab_test_with_thumbnail_variant_kind_uses_per_variant_thumbs(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+
+    thumbnails = [
+        str(tmp_path / "media" / "adaptations" / "adapt-1" / "thumb_1.png"),
+        str(tmp_path / "media" / "adaptations" / "adapt-1" / "thumb_2.png"),
+        str(tmp_path / "media" / "adaptations" / "adapt-1" / "thumb_3.png"),
+    ]
+    res = test_client.post(
+        "/api/v1/ab-tests/start",
+        json={
+            "clip_id": clip.id,
+            "platform": "youtube_shorts",
+            "variant_kind": "THUMBNAIL",
+            "titles": [],
+            "thumbnail_paths": thumbnails,
+        },
+    )
+
+    assert res.status_code == 201
+    body = res.json()
+    assert body["variant_kind"] == "THUMBNAIL"
+    assert len(body["variants"]) == 3
+    for index, variant in enumerate(body["variants"]):
+        assert variant["thumbnail_url"] == f"/media/adaptations/adapt-1/thumb_{index + 1}.png"
+        assert variant["title"] == f"Thumbnail {index + 1}"
+
+
+def test_start_ab_test_thumbnail_kind_requires_two_distinct_thumbnails(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+
+    res = test_client.post(
+        "/api/v1/ab-tests/start",
+        json={
+            "clip_id": clip.id,
+            "platform": "youtube_shorts",
+            "variant_kind": "THUMBNAIL",
+            "titles": [],
+            "thumbnail_paths": ["/media/adaptations/adapt-1/thumb_1.png"],
+        },
+    )
+    assert res.status_code == 422
+    assert "two distinct thumbnail variants" in res.json()["detail"]
+
+
 def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
     client: tuple[TestClient, Path],
 ) -> None:

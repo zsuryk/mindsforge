@@ -11,7 +11,9 @@ Platform = Literal["youtube_shorts", "tiktok", "x"]
 class AbExperimentStartIn(BaseModel):
     clip_id: str
     platform: Platform
-    titles: list[str] = Field(min_length=2)
+    titles: list[str] = Field(default_factory=list)
+    variant_kind: AbExperimentVariantKind = AbExperimentVariantKind.TITLE
+    thumbnail_paths: list[str] = Field(default_factory=list)
 
 
 class AbVariantOut(BaseModel):

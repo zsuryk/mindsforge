@@ -203,6 +203,8 @@ export async function startAbTest(input: {
   clipId: string;
   platform: string;
   titles: string[];
+  variantKind?: "TITLE" | "THUMBNAIL";
+  thumbnailPaths?: string[];
 }): Promise<AbExperiment> {
   const res = await fetch(`${API_URL}/ab-tests/start`, {
     method: "POST",
@@ -211,8 +213,81 @@ export async function startAbTest(input: {
       clip_id: input.clipId,
       platform: input.platform,
       titles: input.titles,
+      variant_kind: input.variantKind ?? "TITLE",
+      thumbnail_paths: input.thumbnailPaths ?? [],
     }),
   });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export type AdaptationStatus =
+  | "PENDING"
+  | "GENERATING"
+  | "READY"
+  | "FAILED";
+
+export type AdaptationThumbnailVariant = {
+  id: string;
+  frame_timestamp: number;
+  overlay_text: string;
+  file_path: string | null;
+  url: string;
+};
+
+export type AdaptationAssets = {
+  thumbnail_variants: AdaptationThumbnailVariant[];
+  captions_url: string | null;
+  chapters_url: string | null;
+};
+
+export type Adaptation = {
+  id: string;
+  clip_id: string;
+  platform: string;
+  surface: "SHORTS" | "LONG_FORM" | "POST";
+  status: AdaptationStatus;
+  features: Record<string, unknown> | null;
+  assets: AdaptationAssets | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function fetchAdaptations(clipId: string): Promise<Adaptation[]> {
+  const res = await fetch(`${API_URL}/clips/${clipId}/adaptations`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function fetchAdaptation(
+  clipId: string,
+  adaptationId: string,
+): Promise<Adaptation> {
+  const res = await fetch(`${API_URL}/clips/${clipId}/adaptations/${adaptationId}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function generateAdaptation(
+  clipId: string,
+  platform: string,
+  surface: string,
+): Promise<Adaptation> {
+  const res = await fetch(
+    `${API_URL}/clips/${clipId}/adaptations/${platform}/${surface}`,
+    { method: "POST" },
+  );
   if (!res.ok) {
     throw await extractError(res);
   }

@@ -262,6 +262,8 @@ describe("startAbTest", () => {
         clip_id: "clip-1",
         platform: "youtube_shorts",
         titles: ["Title one", "Title two"],
+        variant_kind: "TITLE",
+        thumbnail_paths: [],
       }),
     );
     expect(result).toEqual(created);
