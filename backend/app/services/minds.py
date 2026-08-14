@@ -306,11 +306,40 @@ def _is_mind_reply(row: dict[str, Any]) -> bool:
     return sender_type == MIND_SENDER_TYPE
 
 
+def _fingerprint_recency(fingerprint: str) -> int:
+    """Ordering key for a history fingerprint.
+
+    Fingerprints are ``<epoch-ms>_<uuid>``, so the numeric prefix is a
+    monotonic recency key: larger means the row is newer.
+    """
+    prefix = fingerprint.split("_", 1)[0]
+    try:
+        return int(prefix)
+    except ValueError:
+        return 0
+
+
+def _is_newer_than(row: dict[str, Any], cursor: str | None) -> bool:
+    """Whether a history row was created after the cursor fingerprint.
+
+    The Builder history API ignores the ``after`` cursor parameter — it always
+    returns the full conversation, newest first — so stale replies to earlier
+    prompts must be filtered client-side by fingerprint recency instead.
+    """
+    if cursor is None:
+        return True
+    fingerprint = row.get("fingerprint")
+    if not fingerprint:
+        return False
+    return _fingerprint_recency(str(fingerprint)) > _fingerprint_recency(cursor)
+
+
 def _message_mind(agent_id: str, prompt: str) -> str:
     """Send a prompt to the Mind and block until it replies, returning the text.
 
     The Builder API messaging flow is asynchronous: create the conversation,
-    POST the message, then poll history for a Mind reply (senderType 0).
+    POST the message, then poll history for a Mind reply (senderType 0) that
+    is newer than the message we just sent.
     """
     _ensure_conversation(agent_id)
     cursor = _latest_history_fingerprint()
@@ -324,7 +353,7 @@ def _message_mind(agent_id: str, prompt: str) -> str:
     while True:
         history = _get(
             f"/v1/messaging/histories/{MESSAGING_ALIAS}",
-            params={"limit": 50, **({"after": cursor} if cursor else {})},
+            params={"limit": 50},
         )
         if history.status_code != 200:
             raise MindsError(f"History fetch failed with status {history.status_code}")
@@ -332,6 +361,8 @@ def _message_mind(agent_id: str, prompt: str) -> str:
         if not isinstance(rows, list):
             raise MindsError("History fetch returned an unexpected shape")
         for row in rows:
+            if not _is_newer_than(row, cursor):
+                continue
             if _is_mind_reply(row):
                 text = row.get("messageText")
                 if isinstance(text, str) and text.strip():
@@ -406,7 +437,10 @@ def _parse_json_object(text: str, context: str) -> dict[str, Any]:
         start, end = text.index("{"), text.rindex("}")
         data = json.loads(text[start : end + 1])
     except (ValueError, json.JSONDecodeError) as exc:
-        raise MindsError(f"Could not parse {context} JSON: {exc}") from exc
+        preview = f"{text[:200]}…" if len(text) > 200 else text
+        raise MindsError(
+            f"Could not parse {context} JSON: {exc}; reply was: {preview!r}"
+        ) from exc
     if not isinstance(data, dict):
         raise MindsError(f"{context} returned a non-object body")
     return data

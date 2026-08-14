@@ -116,6 +116,44 @@ def test_message_mind_ignores_human_echo_until_mind_replies(
     assert minds._message_mind("agent-1", "prompt text") == "actual reply"
 
 
+def test_message_mind_skips_stale_replies_older_than_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Builder history API ignores the `after` cursor, so the poll must
+    filter client-side: a Mind reply that pre-dates the message we just sent
+    is a stale reply to an earlier prompt and must not be returned."""
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(minds, "_post", lambda path, payload: FakeResponse({}, 200))
+
+    stale_fp = "0001786721564254_stale-reply"
+    echo_fp = "0001786725459810_echo"
+    real_fp = "0001786725598305_real-reply"
+
+    polls: list[list[dict[str, Any]]] = [
+        [
+            {"senderType": 1, "messageText": "prompt text", "fingerprint": echo_fp},
+            {"senderType": 0, "messageText": "stale prose", "fingerprint": stale_fp},
+        ],
+        [
+            {"senderType": 0, "messageText": "real reply", "fingerprint": real_fp},
+            {"senderType": 1, "messageText": "prompt text", "fingerprint": echo_fp},
+            {"senderType": 0, "messageText": "stale prose", "fingerprint": stale_fp},
+        ],
+    ]
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse(
+                [{"senderType": 0, "messageText": "stale prose", "fingerprint": stale_fp}],
+                200,
+            )
+        return FakeResponse(polls.pop(0), 200)
+
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    assert minds._message_mind("agent-1", "prompt text") == "real reply"
+
+
 def test_message_mind_times_out_when_no_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
