@@ -68,7 +68,7 @@ def start_ab_test(
         ]
         if len(set(thumbnail_paths)) < 2:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Provide at least two distinct thumbnail variants",
             )
         if len(set(titles)) < 2:
@@ -77,7 +77,7 @@ def start_ab_test(
             ]
     elif len(set(titles)) < 2:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Provide at least two distinct variant titles",
         )
 

@@ -35,7 +35,7 @@ def _validate_source_url(source_url: str) -> None:
     parsed = urlparse(source_url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="source_url must be a valid http(s) URL",
         )
 
@@ -50,7 +50,7 @@ def process_job(
 ) -> JobCreated:
     if (source_url is None) == (file is None):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Provide exactly one of source_url or a file upload",
         )
 

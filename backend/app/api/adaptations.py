@@ -88,7 +88,7 @@ def generate_clip_adaptation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found")
     if not _valid_target(platform, surface):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unsupported platform/surface: {platform}/{surface}",
         )
 

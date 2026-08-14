@@ -126,7 +126,7 @@ def make_adaptation(
 
 
 def _count_whiteish_pixels(image: Image.Image) -> int:
-    pixels = list(image.getdata())
+    pixels = list(image.get_flattened_data())
     return sum(1 for r, g, b in pixels if r > 200 and g > 200 and b > 200)
 
 
