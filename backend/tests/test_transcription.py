@@ -1,20 +1,25 @@
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from groq.types.audio.transcription import Transcription
+
 from app.services.transcription import TranscriptionError, transcribe
 
 
 class _Transcriptions:
-    def create(self, model: str, file, response_format: str) -> SimpleNamespace:
+    def create(self, model: str, file, response_format: str) -> Transcription:
         assert model == "whisper-large-v3"
         assert response_format == "verbose_json"
-        return SimpleNamespace(
-            duration=42.5,
-            segments=[
-                SimpleNamespace(text="first segment", start=0.0, end=2.0),
-                SimpleNamespace(text="second segment", start=2.0, end=4.5),
-            ],
+        return Transcription.model_validate(
+            {
+                "text": "first segment second segment",
+                "duration": 42.5,
+                "language": "english",
+                "segments": [
+                    {"text": "first segment", "start": 0.0, "end": 2.0},
+                    {"text": "second segment", "start": 2.0, "end": 4.5},
+                ],
+            }
         )
 
 
@@ -63,6 +68,46 @@ def test_transcribe_maps_verbose_json_to_segments(tmp_path, monkeypatch) -> None
     ]
 
 
+def test_transcribe_parses_segments_from_real_groq_response(
+    tmp_path, monkeypatch
+) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    get_settings.cache_clear()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"wav")
+
+    payload = {
+        "text": "hello world",
+        "duration": 3.5,
+        "language": "english",
+        "segments": [
+            {"text": "hello", "start": 0.0, "end": 1.2},
+            {"text": "world", "start": 1.2, "end": 2.0},
+        ],
+    }
+
+    class _RealResponseGroq:
+        def __init__(self, api_key: str) -> None:
+            pass
+
+        class audio:
+            class transcriptions:
+                @staticmethod
+                def create(**kwargs) -> Transcription:
+                    return Transcription.model_validate(payload)
+
+    with patch("app.services.transcription.Groq", _RealResponseGroq):
+        result = transcribe(audio)
+
+    assert result.duration_seconds == 3.5
+    assert [(s.text, s.start, s.end) for s in result.segments] == [
+        ("hello", 0.0, 1.2),
+        ("world", 1.2, 2.0),
+    ]
+
+
 def test_transcribe_requires_api_key(tmp_path, monkeypatch) -> None:
     from app.core.config import get_settings
 
@@ -83,7 +128,8 @@ def test_transcribe_wraps_api_errors(tmp_path, monkeypatch) -> None:
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"wav")
 
-    with patch("app.services.transcription.Groq", _ExplodingGroq), pytest.raises(
-        TranscriptionError, match="groq is down"
+    with (
+        patch("app.services.transcription.Groq", _ExplodingGroq),
+        pytest.raises(TranscriptionError, match="groq is down"),
     ):
         transcribe(audio)

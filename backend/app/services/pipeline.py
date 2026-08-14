@@ -157,4 +157,4 @@ def run_pipeline(job_id: str) -> None:
             job.status = JobStatus.FAILED
             job.error_message = str(exc)[:2048]
             db.commit()
-            logger.info("Job %s failed: %s", job_id, job.error_message)
+            logger.error("Job %s failed: %s", job_id, job.error_message)

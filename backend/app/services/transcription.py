@@ -39,8 +39,11 @@ def transcribe(audio_path: Path) -> Transcription:
     except Exception as exc:
         raise TranscriptionError(f"Groq transcription failed: {exc}") from exc
 
+    data = response.model_dump()
     segments = [
-        TranscriptSegment(text=segment.text, start=segment.start, end=segment.end)
-        for segment in response.segments or []
+        TranscriptSegment(text=s["text"], start=float(s["start"]), end=float(s["end"]))
+        for s in data.get("segments") or []
     ]
-    return Transcription(segments=segments, duration_seconds=response.duration or 0.0)
+    return Transcription(
+        segments=segments, duration_seconds=float(data.get("duration") or 0.0)
+    )
