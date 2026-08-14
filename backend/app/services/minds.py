@@ -141,10 +141,11 @@ class AdaptationFeatures(BaseModel):
             )
         for feature in required:
             if not _present(getattr(self, feature)):
-                raise ValueError(
-                    f"{self.platform} {self.surface} requires {feature}"
-                )
-        if self.surface in ("SHORTS", "LONG_FORM") and len(self.thumbnail_briefs or []) != 3:
+                raise ValueError(f"{self.platform} {self.surface} requires {feature}")
+        if (
+            self.surface in ("SHORTS", "LONG_FORM")
+            and len(self.thumbnail_briefs or []) != 3
+        ):
             raise ValueError(
                 f"{self.platform} {self.surface} requires exactly 3 thumbnail_briefs"
             )
@@ -260,16 +261,35 @@ def update_memory(agent_id: str, key: str, value: Any) -> bool:
 
 def _ensure_conversation(agent_id: str) -> None:
     """Create the message conversation for this Mind if it does not exist."""
-    response = _post("/v1/messaging/conversation", {"alias": MESSAGING_ALIAS, "mindId": agent_id})
+    response = _post(
+        "/v1/messaging/conversation", {"alias": MESSAGING_ALIAS, "mindId": agent_id}
+    )
     if response.status_code in (200, 409):
         return
-    raise MindsError(f"Failed to create conversation with status {response.status_code}")
+    if _is_alias_already_exists(response):
+        return
+    raise MindsError(
+        f"Failed to create conversation with status {response.status_code}"
+    )
+
+
+def _is_alias_already_exists(response: httpx.Response) -> bool:
+    """The Builder API reports a duplicate alias as 400 VALIDATION_FAILED with
+    message "alias already exists" rather than a 409, so treat that body as an
+    idempotent success."""
+    if response.status_code != 400:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    if not isinstance(body, dict):
+        return False
+    return (body.get("error") or {}).get("message") == "alias already exists"
 
 
 def _latest_history_fingerprint() -> str | None:
-    response = _get(
-        f"/v1/messaging/histories/{MESSAGING_ALIAS}", params={"limit": 1}
-    )
+    response = _get(f"/v1/messaging/histories/{MESSAGING_ALIAS}", params={"limit": 1})
     if response.status_code != 200:
         raise MindsError(f"History fetch failed with status {response.status_code}")
     rows = _decode_json(response, "History fetch")
@@ -347,7 +367,9 @@ def _build_metadata_prompt(
     memory_context: str | None,
 ) -> str:
     memory_block = memory_context if memory_context else "none"
-    duration_block = f"{duration_seconds:.1f}s" if duration_seconds is not None else "unknown"
+    duration_block = (
+        f"{duration_seconds:.1f}s" if duration_seconds is not None else "unknown"
+    )
     return (
         "You are a short-form content strategist working with a creator. "
         "Score the clip transcript below and produce platform-specific hooks.\n\n"
@@ -355,16 +377,16 @@ def _build_metadata_prompt(
         f"Clip duration: {duration_block}\n\n"
         "Creator memory context (historical insights):\n"
         f"{memory_block}\n\n"
-        'Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n'
-        '{\n'
+        "Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n"
+        "{\n"
         '  "virality_score": 0-100 integer,\n'
         '  "suggested_titles": ["3-5 short titles under 70 characters"],\n'
         '  "platform_hooks": {\n'
         '    "youtube_shorts": ["3-5 hooks"],\n'
         '    "tiktok": ["3-5 hooks"],\n'
         '    "x": ["3-5 hooks"]\n'
-        '  }\n'
-        '}\n'
+        "  }\n"
+        "}\n"
         "Rules:\n"
         "- virality_score reflects this clip's engagement potential for this creator.\n"
         "- suggested_titles: hook-driven titles, each under 70 characters.\n"
@@ -446,11 +468,11 @@ def _build_winner_prompt(
         f"{variant_lines}\n\n"
         "Creator memory context (brand voice and past learnings):\n"
         f"{memory_block}\n\n"
-        'Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n'
-        '{\n'
+        "Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n"
+        "{\n"
         '  "winning_variant_id": "the id of the winning variant from the list above",\n'
         '  "reasoning": "2-3 sentences: why this variant won and what to reuse next time"\n'
-        '}\n'
+        "}\n"
         "Rules:\n"
         "- winning_variant_id must exactly match one of the variant_id values above.\n"
         "- reasoning must be non-empty and grounded in the variant metrics and clip content.\n"
@@ -484,7 +506,11 @@ def decide_experiment_winner(
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Experiment verdict response missing 'response' text")
     verdict = _parse_winner_verdict(message)
-    known_ids = {str(variant.get("variant_id")) for variant in variants if variant.get("variant_id")}
+    known_ids = {
+        str(variant.get("variant_id"))
+        for variant in variants
+        if variant.get("variant_id")
+    }
     if not known_ids or verdict.winning_variant_id not in known_ids:
         raise MindsError(
             f"Experiment verdict picked unknown variant id {verdict.winning_variant_id!r}"
@@ -517,12 +543,7 @@ ADAPTATION_FEATURE_SHAPES: dict[tuple[str, str], str] = {
         '  "pinned_comment": "pinned comment text"\n'
         "}\n"
     ),
-    ("x", "POST"): (
-        "{\n"
-        '  "caption": "the post caption",\n'
-        '  "hashtags": ["#tag"]\n'
-        "}\n"
-    ),
+    ("x", "POST"): ('{\n  "caption": "the post caption",\n  "hashtags": ["#tag"]\n}\n'),
 }
 
 
@@ -571,7 +592,9 @@ def _build_adaptation_prompt(
     )
 
 
-def _parse_adaptation_features(message: str, platform: str, surface: str) -> AdaptationFeatures:
+def _parse_adaptation_features(
+    message: str, platform: str, surface: str
+) -> AdaptationFeatures:
     data = _parse_json_object(message, "adaptation features")
     if data.get("surface") not in (None, surface):
         raise MindsError(
