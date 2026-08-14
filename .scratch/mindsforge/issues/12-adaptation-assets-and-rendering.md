@@ -9,10 +9,10 @@
 
 **Blocked by:** 11 — Adaptation domain & lazy generation
 
-**Status:** ready-for-agent
+**Status:** done (e7aa4f0)
 
-- [ ] `pillow` added to `pyproject.toml`
-- [ ] Thumbnail renderer: frame extract + center-crop + text overlay per surface aspect ratio; deterministic output, error → adaptation FAILED
-- [ ] SRT + chapters writers from filtered job segments (offset to clip-relative timestamps for SRT; absolute for chapters)
-- [ ] Assets JSON persisted with servable URLs; renders run inside the generation task after the manifest is accepted
-- [ ] Tests: aspect-ratio crops, overlay text present (pixel/smoke checks), SRT segment offsets/format, chapters file content, media_url serving, failure paths
+- [x] `pillow` added to `pyproject.toml`
+- [x] Thumbnail renderer: frame extract + center-crop + text overlay per surface aspect ratio; deterministic output, error → adaptation FAILED
+- [x] SRT + chapters writers from filtered job segments (offset to clip-relative timestamps for SRT; absolute for chapters)
+- [x] Assets JSON persisted with servable URLs; renders run inside the generation task after the manifest is accepted
+- [x] Tests: aspect-ratio crops, overlay text present (pixel/smoke checks), SRT segment offsets/format, chapters file content, media_url serving, failure paths

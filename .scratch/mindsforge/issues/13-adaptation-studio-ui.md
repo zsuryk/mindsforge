@@ -11,12 +11,12 @@ Platforms list (`frontend/lib/platforms.ts`) gains the surfaces; API client (`fr
 
 **Blocked by:** 09 — Mind-decided A/B conclusion, 11 — Adaptation domain & lazy generation, 12 — Adaptation assets & rendering
 
-**Status:** ready-for-agent
+**Status:** done (ticket 13 commit)
 
-- [ ] Surfaces in a shared frontend constant; adaptation tabs render per platform-surface
-- [ ] Generate button + status lifecycle polling (or refresh-on-click) + FAILED error display
-- [ ] Manifest panels with copy-paste blocks for every feature type
-- [ ] Thumbnail variant grid + SRT/chapters download links
-- [ ] Publish checklist component
-- [ ] A/B modal toggle title|thumbnail; thumbnail-variant experiment launches with `variant_kind=THUMBNAIL`; experiments page renders thumbnail variants
-- [ ] Vitest coverage for the new components
+- [x] Surfaces in a shared frontend constant; adaptation tabs render per platform-surface
+- [x] Generate button + status lifecycle polling (or refresh-on-click) + FAILED error display
+- [x] Manifest panels with copy-paste blocks for every feature type
+- [x] Thumbnail variant grid + SRT/chapters download links
+- [x] Publish checklist component
+- [x] A/B modal toggle title|thumbnail; thumbnail-variant experiment launches with `variant_kind=THUMBNAIL`; experiments page renders thumbnail variants
+- [x] Vitest coverage for the new components
