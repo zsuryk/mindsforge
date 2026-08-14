@@ -147,7 +147,7 @@ def test_render_long_form_creates_three_thumbnails_srt_and_chapters(
             surface="LONG_FORM",
             features=LONG_FORM_FEATURES,
         )
-        assets = render_adaptation_assets(db, adaptation)
+        assets = render_adaptation_assets(adaptation)
 
     variants = assets["thumbnail_variants"]
     assert [variant["id"] for variant in variants] == ["thumb_1", "thumb_2", "thumb_3"]
@@ -166,10 +166,10 @@ def test_render_long_form_creates_three_thumbnails_srt_and_chapters(
     content = captions.read_text(encoding="utf-8")
     assert content.startswith("1\n00:00:00,000 --> 00:00:00,200\nintro.\n")
     assert "00:00:01,400 --> 00:00:02,600\npunchline.\n" in content
-    assert "00:00:03,800 --> 00:00:05,000\noutro.\n"
+    assert "00:00:03,800 --> 00:00:05,000\noutro.\n" in content
 
     chapters = Path(assets["chapters_file"])
-    assert chapters.read_text(encoding="utf-8").splitlines() == ["00:01 Intro"]
+    assert chapters.read_text(encoding="utf-8").splitlines() == ["00:00 Intro"]
 
 
 @needs_ffmpeg
@@ -204,7 +204,7 @@ def test_render_shorts_and_tiktok_use_vertical_ratio(
         shorts = make_adaptation(
             db, clip, platform="youtube", surface="SHORTS", features=shorts_features
         )
-        shorts_assets = render_adaptation_assets(db, shorts)
+        shorts_assets = render_adaptation_assets(shorts)
         assert len(shorts_assets["thumbnail_variants"]) == 3
         for variant in shorts_assets["thumbnail_variants"]:
             with Image.open(Path(variant["file_path"])) as image:
@@ -213,7 +213,7 @@ def test_render_shorts_and_tiktok_use_vertical_ratio(
         tiktok = make_adaptation(
             db, clip, platform="tiktok", surface="POST", features=tiktok_features
         )
-        tiktok_assets = render_adaptation_assets(db, tiktok)
+        tiktok_assets = render_adaptation_assets(tiktok)
         assert len(tiktok_assets["thumbnail_variants"]) == 2
         assert tiktok_assets["thumbnail_variants"][0]["overlay_text"] == "punchline!"
         assert tiktok_assets["thumbnail_variants"][1]["overlay_text"] == "reveal..."
@@ -243,7 +243,7 @@ def test_render_composites_overlay_text_onto_frames(
         adaptation = make_adaptation(
             db, clip, platform="youtube", surface="SHORTS", features=features
         )
-        assets = render_adaptation_assets(db, adaptation)
+        assets = render_adaptation_assets(adaptation)
 
     with Image.open(Path(assets["thumbnail_variants"][0]["file_path"])) as image:
         assert _count_whiteish_pixels(image) > 50
@@ -260,17 +260,71 @@ def test_write_srt_offsets_to_clip_start(tmp_path: Path) -> None:
     assert content.strip().endswith("outro.")
 
 
-def test_write_chapters_maps_to_nearest_segment_boundary(tmp_path: Path) -> None:
+def test_post_overlay_briefs_carry_style_and_honour_caption_style() -> None:
+    from app.models.adaptation import AdaptationSurface
+
+    from app.services.adaptation_assets import _thumbnail_briefs
+
+    from app.models.adaptation import ClipAdaptation
+
+    adaptation = ClipAdaptation(
+        clip_id="clip-1",
+        platform="tiktok",
+        surface=AdaptationSurface.POST,
+        features={
+            "overlay_spec": [
+                {"text": "top line", "placement": "top", "style": "italic"},
+                {"text": "the caption", "placement": "center", "style": "bold"},
+                {"text": "bottom line", "placement": "bottom", "style": "outlined"},
+            ],
+            "caption_style": "italic caption styling note",
+        },
+    )
+    briefs = _thumbnail_briefs(adaptation, FAKE_SEGMENTS)
+
+    assert [brief["placement"] for brief in briefs] == ["top", "center", "bottom"]
+    # each spec's own style is carried through...
+    assert briefs[0]["style"] == "italic"
+    # ...and the caption placement takes the caption_style keyword
+    assert briefs[1]["style"] == "italic"
+    assert briefs[2]["style"] == "outlined"
+
+
+def test_excess_overlay_specs_raise_clear_render_error() -> None:
+    from app.models.adaptation import AdaptationSurface
+
+    from app.services.adaptation_assets import (
+        AdaptationAssetError,
+        _thumbnail_briefs,
+    )
+
+    from app.models.adaptation import ClipAdaptation
+
+    adaptation = ClipAdaptation(
+        clip_id="clip-1",
+        platform="tiktok",
+        surface=AdaptationSurface.POST,
+        features={
+            "overlay_spec": [
+                {"text": f"spec {i}", "placement": "center", "style": "bold"}
+                for i in range(len(FAKE_SEGMENTS) + 1)
+            ],
+            "caption_style": "bold white",
+        },
+    )
+    with pytest.raises(AdaptationAssetError, match="overlay specs"):
+        _thumbnail_briefs(adaptation, FAKE_SEGMENTS)
+
+
+def test_write_chapters_writes_manifest_timestamps_verbatim(tmp_path: Path) -> None:
     path = tmp_path / "chapters.txt"
     write_chapters(
         path,
         [{"title": "Intro", "timestamp": 0.5}, {"title": "Reveal", "timestamp": 2.8}],
-        FAKE_SEGMENTS,
-        clip_start=CLIP_START,
     )
     assert path.read_text(encoding="utf-8").splitlines() == [
-        "00:01 Intro",
-        "00:03 Reveal",
+        "00:00 Intro",
+        "00:02 Reveal",
     ]
 
 
@@ -295,7 +349,7 @@ def test_render_fails_closed_when_source_missing(
         )
         Path(video).unlink()
         with pytest.raises(AdaptationAssetError, match="Source media missing"):
-            render_adaptation_assets(db, adaptation)
+            render_adaptation_assets(adaptation)
 
 
 @needs_ffmpeg

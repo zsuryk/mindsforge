@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.base import get_db
 from app.models.clip import Clip
-from app.models.experiment import AbExperiment, AbExperimentStatus
+from app.models.experiment import (
+    AbExperiment,
+    AbExperimentStatus,
+    AbExperimentVariantKind,
+)
 from app.schemas.experiment import AbActiveOut, AbExperimentOut, AbExperimentStartIn
 from app.services.media import media_url
 
@@ -58,7 +62,7 @@ def start_ab_test(
     titles = [title.strip() for title in payload.titles if title and title.strip()]
     variant_titles = titles
 
-    if payload.variant_kind.value == "THUMBNAIL":
+    if payload.variant_kind == AbExperimentVariantKind.THUMBNAIL:
         thumbnail_paths = [
             path for path in payload.thumbnail_paths if path and path.strip()
         ]
@@ -88,7 +92,7 @@ def start_ab_test(
                 "title": title,
                 "thumbnail_path": (
                     thumbnail_paths[index]
-                    if payload.variant_kind.value == "THUMBNAIL"
+                    if payload.variant_kind == AbExperimentVariantKind.THUMBNAIL
                     else clip.thumbnail_path
                 ),
                 "ctr": 0.0,
@@ -114,6 +118,10 @@ def list_active_ab_tests(db: Session = Depends(get_db)) -> AbActiveOut:
                 AbExperiment.status == AbExperimentStatus.ACTIVE,
                 and_(
                     AbExperiment.status == AbExperimentStatus.CONCLUDED,
+                    AbExperiment.concluded_at >= recency_cutoff,
+                ),
+                and_(
+                    AbExperiment.status == AbExperimentStatus.FAILED,
                     AbExperiment.concluded_at >= recency_cutoff,
                 ),
             )

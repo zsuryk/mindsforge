@@ -108,7 +108,30 @@ function featureLines(features: Record<string, unknown>, key: string): string[] 
   return [String(value)];
 }
 
-function CopyBlock({ label, lines }: { label: string; lines: string[] }) {
+function TagChips({ tags }: { tags: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs text-slate-200"
+        >
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function CopyBlock({
+  label,
+  lines,
+  children,
+}: {
+  label: string;
+  lines: string[];
+  children?: React.ReactNode;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -137,9 +160,13 @@ function CopyBlock({ label, lines }: { label: string; lines: string[] }) {
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-slate-200">
-        {lines.join("\n")}
-      </pre>
+      {children ? (
+        children
+      ) : (
+        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-slate-200">
+          {lines.join("\n")}
+        </pre>
+      )}
     </div>
   );
 }
@@ -181,9 +208,11 @@ function StatusBadge({ status }: { status: string }) {
 
 function AssetGrid({
   assets,
+  platform,
   onTest,
 }: {
   assets: AdaptationAssets;
+  platform: string;
   onTest: (variants: AdaptationThumbnailVariant[]) => void;
 }) {
   const variants = assets.thumbnail_variants ?? [];
@@ -228,7 +257,7 @@ function AssetGrid({
             chapters.txt
           </a>
         )}
-        {variants.length >= 2 && (
+        {platform === "youtube" && variants.length >= 2 && (
           <button
             type="button"
             onClick={() => onTest(variants)}
@@ -375,7 +404,11 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
           className="flex items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Wand2 className="h-4 w-4" />
-          {isBusy ? "Generating…" : adaptation === null ? "Generate" : "Regenerate"}
+          {isBusy
+            ? "Generating…"
+            : adaptation?.status === "FAILED"
+              ? "Retry"
+              : "Generate"}
         </button>
       </div>
 
@@ -384,7 +417,13 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
           {adaptation.features && (
             <div className="grid gap-3 lg:grid-cols-2">
               {manifestPanels(adaptation.features).map((panel) => (
-                <CopyBlock key={panel.key} label={panel.label} lines={panel.lines} />
+                <CopyBlock
+                  key={panel.key}
+                  label={panel.label}
+                  lines={panel.lines}
+                >
+                  {panel.key === "tags" && <TagChips tags={panel.lines} />}
+                </CopyBlock>
               ))}
             </div>
           )}
@@ -394,7 +433,11 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
               Assets
             </p>
             {adaptation.assets ? (
-              <AssetGrid assets={adaptation.assets} onTest={handleTest} />
+              <AssetGrid
+                assets={adaptation.assets}
+                platform={adaptation.platform}
+                onTest={handleTest}
+              />
             ) : (
               <p className="text-sm text-slate-500">No assets rendered yet.</p>
             )}
@@ -437,7 +480,9 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
         thumbnailVariants={testVariants}
         platform={
           activeTarget.platform === "youtube"
-            ? "youtube_shorts"
+            ? activeTarget.surface === "LONG_FORM"
+              ? "youtube"
+              : "youtube_shorts"
             : activeTarget.platform
         }
       />

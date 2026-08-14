@@ -2,6 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
@@ -117,7 +118,28 @@ def generate_clip_adaptation(
             clip_id=clip_id, platform=platform, surface=surface
         )
         db.add(adaptation)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two requests raced to create the same (clip, platform, surface):
+            # the loser converges on the row the winner inserted instead of
+            # surfacing a 500 on the unique constraint.
+            db.rollback()
+            adaptation = db.scalar(
+                select(ClipAdaptation).where(
+                    ClipAdaptation.clip_id == clip_id,
+                    ClipAdaptation.platform == platform,
+                    ClipAdaptation.surface == surface,
+                )
+            )
+            if adaptation is None:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Adaptation row lost during concurrent creation",
+                )
+            return JSONResponse(
+                content=jsonable_encoder(_to_out(adaptation)), status_code=200
+            )
         db.refresh(adaptation)
 
     background_tasks.add_task(generate_adaptation, adaptation.id)

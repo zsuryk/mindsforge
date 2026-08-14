@@ -163,4 +163,43 @@ describe("AbExperimentsPage", () => {
     ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("labels long-form YouTube experiments as YouTube Video", async () => {
+    const longForm = {
+      ...activeExperiment(),
+      id: "exp-long",
+      platform: "youtube",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ view_threshold: 1000, experiments: [longForm] })),
+    );
+
+    render(<AbExperimentsPage />);
+
+    expect(
+      await screen.findByText("YouTube Video · 2 variants"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a FAILED badge with the stored error message", async () => {
+    const failed = {
+      ...activeExperiment(),
+      id: "exp-failed",
+      status: "FAILED",
+      error_message: "builder api down",
+      winning_variant_id: null,
+      learned_insight: null,
+    } as AbExperiment;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ view_threshold: 1000, experiments: [failed] })),
+    );
+
+    render(<AbExperimentsPage />);
+
+    expect(await screen.findByText(/Failed · YouTube Shorts · The big reveal/)).toBeInTheDocument();
+    expect(screen.getByText("builder api down")).toBeInTheDocument();
+    expect(screen.queryByText(/no concluded tests yet/i)).toBeInTheDocument();
+  });
 });

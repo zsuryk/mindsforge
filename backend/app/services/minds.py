@@ -120,33 +120,52 @@ class AdaptationFeatures(BaseModel):
 
     @model_validator(mode="after")
     def _check_surface_shape(self) -> "AdaptationFeatures":
-        if self.surface == "SHORTS":
-            if not self.thumbnail_briefs or len(self.thumbnail_briefs) != 3:
-                raise ValueError("youtube SHORTS requires exactly 3 thumbnail_briefs")
-            if not self.platform_hooks:
-                raise ValueError("youtube SHORTS requires platform_hooks")
-        elif self.surface == "LONG_FORM":
-            if not self.chapters or not self.tags or not self.poll or not self.quiz:
+        required = _ADAPTATION_REQUIRED_FEATURES.get((self.platform, self.surface))
+        if required is None:
+            raise ValueError(
+                f"Unsupported adaptation target {self.platform}/{self.surface}"
+            )
+        for feature in required:
+            if not _present(getattr(self, feature)):
                 raise ValueError(
-                    "youtube LONG_FORM requires chapters, tags, poll and quiz"
+                    f"{self.platform} {self.surface} requires {feature}"
                 )
-            if not self.thumbnail_briefs or len(self.thumbnail_briefs) != 3:
-                raise ValueError("youtube LONG_FORM requires exactly 3 thumbnail_briefs")
-        elif self.platform == "tiktok":
-            if (
-                not self.overlay_spec
-                or not self.caption_style
-                or not self.stickers
-                or not self.pinned_comment
-            ):
-                raise ValueError(
-                    "tiktok POST requires overlay_spec, caption_style, stickers "
-                    "and a pinned_comment"
-                )
-        elif self.platform == "x":
-            if not self.caption or not self.hashtags:
-                raise ValueError("x POST requires a caption and hashtags")
+        if self.surface in ("SHORTS", "LONG_FORM") and len(self.thumbnail_briefs or []) != 3:
+            raise ValueError(
+                f"{self.platform} {self.surface} requires exactly 3 thumbnail_briefs"
+            )
         return self
+
+
+def _present(value: object) -> bool:
+    """A required feature is present and non-empty (lists must not be empty)."""
+    if value is None:
+        return False
+    if isinstance(value, (list, dict)):
+        return len(value) > 0
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+_ADAPTATION_REQUIRED_FEATURES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("youtube", "SHORTS"): ("thumbnail_briefs", "platform_hooks"),
+    ("youtube", "LONG_FORM"): (
+        "chapters",
+        "tags",
+        "poll",
+        "quiz",
+        "thumbnail_briefs",
+        "shorts_link",
+    ),
+    ("tiktok", "POST"): (
+        "overlay_spec",
+        "caption_style",
+        "stickers",
+        "pinned_comment",
+    ),
+    ("x", "POST"): ("caption", "hashtags"),
+}
 
 
 def _headers() -> dict[str, str]:
@@ -329,19 +348,21 @@ def _build_winner_prompt(
     variant_lines = "\n".join(
         f"- variant_id: {variant.get('variant_id')}, "
         f"title: {variant.get('title', '')}, "
+        f"thumbnail: {variant.get('thumbnail_path') or 'none'}, "
         f"views: {variant.get('views', 0)}, "
         f"clicks: {variant.get('clicks', 0)}, "
         f"ctr: {variant.get('ctr', 0.0)}%"
         for variant in variants
     )
     return (
-        "You are an A/B testing analyst working with a creator. "
+        "You are an experiment analyst working with a creator. "
         "An experiment on one of the creator's clips just crossed its view "
         "threshold; study the variants and the clip transcript, then pick the "
         "winning variant and explain why.\n\n"
         f"Platform: {platform}\n\n"
         f"Clip transcript:\n{transcript}\n\n"
-        "Experiment variants:\n"
+        "Experiment variants (thumbnail is the rendered thumbnail file path "
+        "viewers saw for that variant):\n"
         f"{variant_lines}\n\n"
         "Creator memory context (brand voice and past learnings):\n"
         f"{memory_block}\n\n"
@@ -353,7 +374,7 @@ def _build_winner_prompt(
         "Rules:\n"
         "- winning_variant_id must exactly match one of the variant_id values above.\n"
         "- reasoning must be non-empty and grounded in the variant metrics and clip content.\n"
-        "- The reasoning doubles as the lesson persisted to the creator's memory."
+        "- The reasoning doubles as the learned insight persisted to the creator's memory."
     )
 
 

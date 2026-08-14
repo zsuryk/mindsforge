@@ -210,9 +210,15 @@ def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
     client: tuple[TestClient, Path],
 ) -> None:
     test_client, tmp_path = client
+    now = datetime.now(timezone.utc)
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
-        active = add_experiment(db, clip_id=clip.id, variants=[{"variant_id": "v1", "title": "A", "ctr": 1.0, "views": 50}])
+        active = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[{"variant_id": "v1", "title": "A", "ctr": 1.0, "views": 50}],
+            created_at=now - timedelta(hours=1),
+        )
         concluded = add_experiment(
             db,
             clip_id=clip.id,
@@ -220,7 +226,8 @@ def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
             status=AbExperimentStatus.CONCLUDED,
             winning_variant_id="v2",
             learned_insight="B won",
-            concluded_at=datetime.now(timezone.utc),
+            concluded_at=now,
+            created_at=now - timedelta(hours=2),
         )
         stale = add_experiment(
             db,
@@ -229,13 +236,17 @@ def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
             status=AbExperimentStatus.CONCLUDED,
             winning_variant_id="v4",
             learned_insight="old",
-            concluded_at=datetime.now(timezone.utc) - timedelta(days=30),
+            concluded_at=now - timedelta(days=30),
+            created_at=now - timedelta(days=31),
         )
         failed = add_experiment(
             db,
             clip_id=clip.id,
             variants=[{"variant_id": "v3", "title": "C", "ctr": 1.0, "views": 10}],
             status=AbExperimentStatus.FAILED,
+            error_message="builder api down",
+            created_at=now - timedelta(days=31),
+            concluded_at=now - timedelta(hours=3),
         )
 
     res = test_client.get("/api/v1/ab-tests/active")
@@ -244,14 +255,16 @@ def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
     body = res.json()
     assert body["view_threshold"] == 1000
     ids = [item["id"] for item in body["experiments"]]
-    assert ids == [concluded.id, active.id]
-    assert failed.id not in ids
+    assert ids == [active.id, concluded.id, failed.id]
     assert stale.id not in ids
-    concluded_body = body["experiments"][0]
+    concluded_body = body["experiments"][1]
     assert concluded_body["status"] == "CONCLUDED"
     assert concluded_body["winning_variant_id"] == "v2"
     assert concluded_body["learned_insight"] == "B won"
     assert concluded_body["clip_title"] == "My clip"
+    failed_body = body["experiments"][2]
+    assert failed_body["status"] == "FAILED"
+    assert failed_body["error_message"] == "builder api down"
 
 
 def test_sweep_accumulates_views_and_keeps_experiment_active_below_threshold(
@@ -354,7 +367,12 @@ def test_mind_failure_fails_experiment_with_error_message(
         assert "builder api down" in stored.error_message
 
     body = test_client.get("/api/v1/ab-tests/active").json()
-    assert experiment.id not in {item["id"] for item in body["experiments"]}
+    assert experiment.id in {item["id"] for item in body["experiments"]}
+    failed_body = next(
+        item for item in body["experiments"] if item["id"] == experiment.id
+    )
+    assert failed_body["status"] == "FAILED"
+    assert "builder api down" in failed_body["error_message"]
 
 
 def test_unconfigured_minds_fails_experiment_at_conclusion(
@@ -412,6 +430,113 @@ def test_mind_picking_unknown_variant_fails_experiment(
         stored = db.get(AbExperiment, experiment.id)
         assert stored.status == AbExperimentStatus.FAILED
         assert "unknown variant id" in stored.error_message
+
+
+def test_unexpected_exception_fails_only_that_experiment(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        first = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+        second = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v3", "title": "C", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v4", "title": "D", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    def decide(platform, variants, transcript, memory_context=None):
+        if variants[0]["variant_id"] == "v1":
+            raise RuntimeError("boom in the verdict code")
+        return minds.ExperimentVerdict(
+            winning_variant_id="v3", reasoning="C won."
+        )
+
+    monkeypatch.setattr(minds, "decide_experiment_winner", decide)
+
+    concluded = ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    assert {item.id for item in concluded} == {first.id, second.id}
+    with get_session_factory()() as db:
+        failed = db.get(AbExperiment, first.id)
+        assert failed.status == AbExperimentStatus.FAILED
+        assert "boom in the verdict code" in failed.error_message
+        winner = db.get(AbExperiment, second.id)
+        assert winner.status == AbExperimentStatus.CONCLUDED
+        assert winner.winning_variant_id == "v3"
+        assert winner.learned_insight == "C won."
+
+
+def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
+    client: tuple[TestClient, Path],
+    _minds_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {
+                    "variant_id": "v1",
+                    "title": "A",
+                    "thumbnail_path": "/media/adaptations/adapt-1/thumb_1.png",
+                    "ctr": 5.0,
+                    "views": 600,
+                    "clicks": 30,
+                },
+                {
+                    "variant_id": "v2",
+                    "title": "B",
+                    "thumbnail_path": "/media/adaptations/adapt-1/thumb_2.png",
+                    "ctr": 2.0,
+                    "views": 400,
+                    "clicks": 8,
+                },
+            ],
+        )
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"response": '{"winning_variant_id": "v1", "reasoning": "A won"}'}
+
+    captured: dict[str, object] = {}
+
+    def fake_post(path, payload):
+        if path.endswith("/message"):
+            captured["path"] = path
+            captured["prompt"] = payload["prompt"]
+        return FakeResponse()
+
+    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    assert captured["path"] == "/minds/agent-1/message"
+    prompt = captured["prompt"]
+    assert isinstance(prompt, str)
+    assert "thumbnail: /media/adaptations/adapt-1/thumb_1.png" in prompt
+    assert "thumbnail: /media/adaptations/adapt-1/thumb_2.png" in prompt
+    assert "experiment analyst" in prompt
+    assert "learned insight" in prompt
+    assert "A/B testing analyst" not in prompt
+    assert "lesson" not in prompt
 
 
 def test_conclusion_writes_insight_to_minds_memory(

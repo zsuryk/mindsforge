@@ -94,11 +94,13 @@ def generate_adaptation(adaptation_id: str) -> None:
             )
             adaptation.features = manifest.model_dump(exclude={"platform", "surface"})
             db.commit()
-            adaptation.assets = render_adaptation_assets(db, adaptation)
+            adaptation.assets = render_adaptation_assets(adaptation)
             db.commit()
-            _persist_adaptation_history(adaptation)
             adaptation.status = AdaptationStatus.READY
             db.commit()
+            # Memory history is appended only after the row is committed READY,
+            # so the record never claims success for a still-GENERATING row.
+            _persist_adaptation_history(adaptation)
             logger.info(
                 "Adaptation %s ready: %s/%s",
                 adaptation.id,

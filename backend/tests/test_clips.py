@@ -284,6 +284,8 @@ def test_job_without_speech_completes_without_clips(
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     from app.core.config import get_settings
 
     get_settings.cache_clear()

@@ -68,17 +68,16 @@ def _score_clips(db: Session, job: Job) -> None:
     fetch may still degrade to None — only verdict calls are gated.
     """
     settings = get_settings()
+    if not settings.MINDS_BUILDER_API_KEY or not settings.MINDS_AGENT_ID:
+        raise minds.MindsConfigError(
+            "Minds is not configured (MINDS_BUILDER_API_KEY/MINDS_AGENT_ID); "
+            "scoring is fail-closed so the job cannot complete"
+        )
     clips = db.scalars(
         select(Clip).where(Clip.job_id == job.id).order_by(Clip.start_time)
     ).all()
     if not clips:
         return
-
-    if not settings.MINDS_BUILDER_API_KEY or not settings.MINDS_AGENT_ID:
-        raise RuntimeError(
-            "Minds is not configured (MINDS_BUILDER_API_KEY/MINDS_AGENT_ID); "
-            "scoring is fail-closed so the job cannot complete"
-        )
 
     try:
         memory = minds.fetch_memory(settings.MINDS_AGENT_ID)

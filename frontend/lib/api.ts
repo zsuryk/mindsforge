@@ -176,6 +176,11 @@ export type AbExperimentStatus = "ACTIVE" | "CONCLUDED" | "FAILED";
 
 export type AbExperimentVariantKind = "TITLE" | "THUMBNAIL";
 
+export const AbExperimentVariantKind = {
+  TITLE: "TITLE",
+  THUMBNAIL: "THUMBNAIL",
+} as const;
+
 export type AbVariant = {
   variant_id: string;
   title: string;
@@ -203,7 +208,7 @@ export async function startAbTest(input: {
   clipId: string;
   platform: string;
   titles: string[];
-  variantKind?: "TITLE" | "THUMBNAIL";
+  variantKind?: AbExperimentVariantKind;
   thumbnailPaths?: string[];
 }): Promise<AbExperiment> {
   const res = await fetch(`${API_URL}/ab-tests/start`, {

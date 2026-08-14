@@ -48,6 +48,7 @@ def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> Non
     """Transition an experiment to FAILED with a stored error message."""
     experiment.status = AbExperimentStatus.FAILED
     experiment.error_message = str(message)[:2048]
+    experiment.concluded_at = datetime.now(timezone.utc)
     db.commit()
     logger.warning("Experiment %s failed: %s", experiment.id, experiment.error_message)
 
@@ -161,7 +162,7 @@ def refresh_active_experiments(
                 try:
                     _conclude_experiment(db, experiment)
                     _persist_insight_to_memory(experiment)
-                except minds.MindsError as exc:
+                except Exception as exc:  # noqa: BLE001 - one broken experiment must not abort the sweep
                     _fail_experiment(db, experiment, exc)
                 concluded.append(experiment)
     return concluded

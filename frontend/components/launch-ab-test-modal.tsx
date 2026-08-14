@@ -4,8 +4,13 @@ import { useEffect, useState } from "react";
 import { FlaskConical, Rocket, X } from "lucide-react";
 import Link from "next/link";
 
-import { AdaptationThumbnailVariant, mediaUrl, startAbTest } from "@/lib/api";
-import { PLATFORMS } from "@/lib/platforms";
+import {
+  AbExperimentVariantKind,
+  AdaptationThumbnailVariant,
+  mediaUrl,
+  startAbTest,
+} from "@/lib/api";
+import { EXPERIMENT_PLATFORMS } from "@/lib/platforms";
 
 const EMPTY_TITLES: string[] = [];
 const EMPTY_VARIANTS: AdaptationThumbnailVariant[] = [];
@@ -15,7 +20,7 @@ export default function LaunchAbTestModal({
   onClose,
   clipId,
   suggestedTitles = EMPTY_TITLES,
-  variantKind = "TITLE",
+  variantKind = AbExperimentVariantKind.TITLE,
   thumbnailVariants = EMPTY_VARIANTS,
   platform: initialPlatform = "youtube_shorts",
 }: {
@@ -23,12 +28,12 @@ export default function LaunchAbTestModal({
   onClose: () => void;
   clipId: string;
   suggestedTitles: string[];
-  variantKind?: "TITLE" | "THUMBNAIL";
+  variantKind?: AbExperimentVariantKind;
   thumbnailVariants?: AdaptationThumbnailVariant[];
   platform?: string;
 }) {
   const [platform, setPlatform] = useState<string>(initialPlatform);
-  const [kind, setKind] = useState<"TITLE" | "THUMBNAIL">(variantKind);
+  const [kind, setKind] = useState<AbExperimentVariantKind>(variantKind);
   const [selected, setSelected] = useState<string[]>(suggestedTitles);
   const [selectedThumbs, setSelectedThumbs] = useState<string[]>(
     thumbnailVariants.map((variant) => variant.id),
@@ -51,7 +56,7 @@ export default function LaunchAbTestModal({
 
   if (!open) return null;
 
-  const thumbnailMode = kind === "THUMBNAIL";
+  const thumbnailMode = kind === AbExperimentVariantKind.THUMBNAIL;
   const usableThumbs = thumbnailMode
     ? thumbnailVariants.filter((variant) => variant.file_path)
     : [];
@@ -92,7 +97,9 @@ export default function LaunchAbTestModal({
         clipId,
         platform,
         titles,
-        variantKind: thumbnailMode ? "THUMBNAIL" : "TITLE",
+        variantKind: thumbnailMode
+          ? AbExperimentVariantKind.THUMBNAIL
+          : AbExperimentVariantKind.TITLE,
         thumbnailPaths: thumbnailMode
           ? pickedThumbs.map((variant) => variant.file_path ?? "")
           : [],
@@ -145,7 +152,7 @@ export default function LaunchAbTestModal({
               onChange={(event) => setPlatform(event.target.value)}
               className="mb-4 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
             >
-              {PLATFORMS.map((option) => (
+              {EXPERIMENT_PLATFORMS.map((option) => (
                 <option key={option.key} value={option.key}>
                   {option.label}
                 </option>
@@ -156,7 +163,7 @@ export default function LaunchAbTestModal({
               <div className="mb-4 flex gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1">
                 <button
                   type="button"
-                  onClick={() => setKind("TITLE")}
+                  onClick={() => setKind(AbExperimentVariantKind.TITLE)}
                   aria-selected={!thumbnailMode}
                   className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
                     !thumbnailMode
@@ -168,7 +175,7 @@ export default function LaunchAbTestModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setKind("THUMBNAIL")}
+                  onClick={() => setKind(AbExperimentVariantKind.THUMBNAIL)}
                   aria-selected={thumbnailMode}
                   className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
                     thumbnailMode

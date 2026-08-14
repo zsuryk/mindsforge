@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.adaptation import ClipAdaptation
@@ -17,17 +16,34 @@ SURFACE_DIMENSIONS = {
     "POST": (1080, 1920),
 }
 
-FONT_CANDIDATES = (
-    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-)
+FONT_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "bold": (
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    ),
+    "italic": (
+        "/usr/share/fonts/dejavu/DejaVuSans-Oblique.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+    ),
+}
 
 PLACEMENT_ZONES = {"top": 0.08, "center": 0.5, "bottom": 0.78}
 
 
 class AdaptationAssetError(RuntimeError):
     pass
+
+
+def _caption_style_keyword(caption_style: str | None) -> str | None:
+    """Map the brief's caption style text to a font style keyword."""
+    lowered = (caption_style or "").lower()
+    if "italic" in lowered:
+        return "italic"
+    if "bold" in lowered:
+        return "bold"
+    return None
 
 
 def _clip_window_segments(
@@ -57,21 +73,41 @@ def _thumbnail_briefs(
             for brief in (features.get("thumbnail_briefs") or [])
         ]
     if surface == "POST":
-        return [
-            {
-                "frame_timestamp": segment.start,
-                "overlay_text": str(spec.get("text") or ""),
-                "placement": spec.get("placement", "center"),
-            }
-            for spec, segment in zip(
-                (features.get("overlay_spec") or []), segments
+        specs = features.get("overlay_spec") or []
+        if len(specs) > len(segments):
+            raise AdaptationAssetError(
+                f"{len(specs)} overlay specs for only {len(segments)} segments "
+                "in the clip window; the manifest cannot be rendered"
             )
-        ]
+        caption_keyword = _caption_style_keyword(features.get("caption_style"))
+        briefs = []
+        for spec, segment in zip(specs, segments):
+            placement = spec.get("placement", "center")
+            briefs.append(
+                {
+                    "frame_timestamp": segment.start,
+                    "overlay_text": str(spec.get("text") or ""),
+                    "placement": placement,
+                    "style": (
+                        caption_keyword
+                        if placement == "center" and caption_keyword
+                        else spec.get("style") or "bold"
+                    ),
+                }
+            )
+        return briefs
     return []
 
 
-def _font_for(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for candidate in FONT_CANDIDATES:
+def _font_for(
+    size: int, style: str = "bold"
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    bold_candidates = FONT_CANDIDATES["bold"]
+    preferred = FONT_CANDIDATES.get(style) or bold_candidates
+    candidates = (
+        preferred if preferred is bold_candidates else [*preferred, *bold_candidates]
+    )
+    for candidate in candidates:
         try:
             return ImageFont.truetype(candidate, size=size)
         except OSError:
@@ -101,14 +137,19 @@ def _compose_overlay(
     text: str,
     placement: str,
     surface: str,
+    style: str = "bold",
 ) -> None:
-    """Center-crop to the surface aspect ratio and composite the overlay text."""
+    """Center-crop to the surface aspect ratio and composite the overlay text.
+
+    `style` selects the font family (bold/italic) so the rendered asset
+    matches the brief instead of every overlay getting identical bold text.
+    """
     dimensions = SURFACE_DIMENSIONS.get(surface, (1280, 720))
     with Image.open(frame_path) as image:
         image = ImageOps.fit(image, dimensions, method=Image.Resampling.LANCZOS)
         draw = ImageDraw.Draw(image)
         font_size = max(24, dimensions[0] // 16)
-        font = _font_for(font_size)
+        font = _font_for(font_size, style)
         max_width = dimensions[0] - 2 * (dimensions[0] // 16)
         lines = _wrap_text(draw, text, font, max_width)
         line_height = font_size
@@ -169,35 +210,26 @@ def write_srt(path: Path, segments: list[TranscriptSegment], clip_start: float) 
     return path
 
 
-def write_chapters(
-    path: Path,
-    chapters: list[dict],
-    segments: list[TranscriptSegment],
-    clip_start: float,
-) -> Path:
-    """Write a chapter list, matching each manifest chapter (clip-relative
-    timestamps) to the nearest segment boundary (absolute source times)."""
-    lines: list[str] = []
-    for chapter in chapters:
-        target = float(chapter.get("timestamp") or 0.0) + clip_start
-        if not segments:
-            timestamp = target
-        else:
-            nearest = min(segments, key=lambda s: abs(s.start - target))
-            timestamp = nearest.start
-        lines.append(f"{_chapter_timestamp(timestamp)} {chapter.get('title', '')}")
+def write_chapters(path: Path, chapters: list[dict]) -> Path:
+    """Write a chapter list with the manifest timestamps verbatim, so the
+    file matches the chapter panels the creator copies from (no snapping to
+    segment boundaries, no clip-start offset)."""
+    lines = [
+        f"{_chapter_timestamp(float(chapter.get('timestamp') or 0.0))} "
+        f"{chapter.get('title', '')}"
+        for chapter in chapters
+    ]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
 
-def render_adaptation_assets(
-    db: Session, adaptation: ClipAdaptation
-) -> dict:
+def render_adaptation_assets(adaptation: ClipAdaptation) -> dict:
     """Render the downloadable assets for an adaptation into
     `media/adaptations/{id}/` and return the assets JSON (file paths).
 
     Raises on any failure (missing source media, ffmpeg frame extraction,
-    Pillow compositing) so the caller fails the adaptation closed.
+    Pillow compositing, excess overlay specs) so the caller fails the
+    adaptation closed.
     """
     clip = adaptation.clip
     if clip is None:
@@ -231,6 +263,7 @@ def render_adaptation_assets(
             brief["overlay_text"],
             brief["placement"],
             adaptation.surface.value,
+            brief.get("style", "bold"),
         )
         assets["thumbnail_variants"].append(
             {
@@ -250,8 +283,6 @@ def render_adaptation_assets(
         write_chapters(
             chapters_path,
             (adaptation.features or {}).get("chapters") or [],
-            segments,
-            clip.start_time,
         )
         assets["chapters_file"] = str(chapters_path)
 

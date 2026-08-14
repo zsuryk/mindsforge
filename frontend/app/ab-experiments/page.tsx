@@ -12,13 +12,13 @@ import {
   YAxis,
 } from "recharts";
 
-import { AbExperiment, AbVariant, fetchAbExperiments, mediaUrl } from "@/lib/api";
-import { PLATFORMS } from "@/lib/platforms";
+import { AbExperiment, AbExperimentVariantKind, AbVariant, fetchAbExperiments, mediaUrl } from "@/lib/api";
+import { EXPERIMENT_PLATFORMS } from "@/lib/platforms";
 
 const POLL_INTERVAL_MS = 10_000;
 
 function platformLabel(platform: string): string {
-  return PLATFORMS.find((option) => option.key === platform)?.label ?? platform;
+  return EXPERIMENT_PLATFORMS.find((option) => option.key === platform)?.label ?? platform;
 }
 
 function formatViews(views: number): string {
@@ -57,6 +57,7 @@ export default function AbExperimentsPage() {
 
   const active = (experiments ?? []).filter((exp) => exp.status === "ACTIVE");
   const concluded = (experiments ?? []).filter((exp) => exp.status === "CONCLUDED");
+  const failed = (experiments ?? []).filter((exp) => exp.status === "FAILED");
 
   return (
     <div className="space-y-8">
@@ -134,6 +135,20 @@ export default function AbExperimentsPage() {
               </div>
             )}
           </section>
+
+          {failed.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-sm font-medium text-slate-400">
+                Failed{" "}
+                <span className="text-slate-600">({failed.length})</span>
+              </h2>
+              <div className="space-y-4">
+                {failed.map((experiment) => (
+                  <FailedExperimentCard key={experiment.id} experiment={experiment} />
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>
@@ -202,7 +217,7 @@ function ActiveExperimentCard({
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400" />
             ACTIVE
           </span>
-          {experiment.variant_kind === "THUMBNAIL" && (
+          {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL && (
             <span className="rounded-full border border-slate-600 bg-slate-800/60 px-2.5 py-1 text-xs font-medium text-slate-300">
               thumbnail variants
             </span>
@@ -212,33 +227,15 @@ function ActiveExperimentCard({
 
       <div className="space-y-2.5">
         {experiment.variants.map((variant) => (
-          <div
+          <VariantRow
             key={variant.variant_id}
-            className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-3"
-          >
-            {variant.thumbnail_url ? (
-              <img
-                src={mediaUrl(variant.thumbnail_url)}
-                alt=""
-                className="h-10 w-16 shrink-0 rounded-md object-cover"
-              />
-            ) : (
-              <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md bg-slate-800 text-xs text-slate-600">
-                no thumb
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-slate-200">{variant.title}</p>
-              <p className="text-xs text-slate-500">
-                {formatViews(variant.views)} views · {variant.ctr.toFixed(2)}% CTR
-              </p>
-            </div>
-            {winner && variant.variant_id === winner.variant_id && variant.ctr > 0 && (
-              <span className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300">
-                leading
-              </span>
-            )}
-          </div>
+            variant={variant}
+            leading={
+              winner !== null &&
+              variant.variant_id === winner.variant_id &&
+              variant.ctr > 0
+            }
+          />
         ))}
       </div>
 
@@ -263,6 +260,81 @@ function ActiveExperimentCard({
             CTR comparison
           </p>
           <CtrChart variants={experiment.variants} barColor="#818cf8" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VariantRow({
+  variant,
+  leading = false,
+}: {
+  variant: AbVariant;
+  leading?: boolean;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-3"
+    >
+      {variant.thumbnail_url ? (
+        <img
+          src={mediaUrl(variant.thumbnail_url)}
+          alt=""
+          className="h-10 w-16 shrink-0 rounded-md object-cover"
+        />
+      ) : (
+        <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md bg-slate-800 text-xs text-slate-600">
+          no thumb
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-slate-200">{variant.title}</p>
+        <p className="text-xs text-slate-500">
+          {formatViews(variant.views)} views · {variant.ctr.toFixed(2)}% CTR
+        </p>
+      </div>
+      {leading && (
+        <span className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300">
+          leading
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FailedExperimentCard({ experiment }: { experiment: AbExperiment }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-red-500/30 bg-slate-900">
+      <div className="flex items-start gap-3 border-b border-red-500/20 bg-red-500/10 p-5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/20">
+          <FlaskConical className="h-5 w-5 text-red-300" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
+            Failed · {platformLabel(experiment.platform)} ·{" "}
+            {experiment.clip_title}
+          </p>
+          <p className="mt-1 text-sm text-slate-200">
+            {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL
+              ? "Thumbnail variants"
+              : "Title variants"}{" "}
+            · {experiment.variants.length} variants
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3 p-5">
+        {experiment.error_message ? (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+            {experiment.error_message}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">No error message recorded.</p>
+        )}
+        <div className="space-y-2">
+          {experiment.variants.map((variant) => (
+            <VariantRow key={variant.variant_id} variant={variant} />
+          ))}
         </div>
       </div>
     </div>

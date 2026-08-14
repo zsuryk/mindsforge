@@ -3,9 +3,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.db.base import get_session_factory
-from app.models.adaptation import AdaptationStatus, ClipAdaptation
+from app.models.adaptation import ClipAdaptation
 from app.models.clip import Clip
 from app.models.job import Job
 from app.services import minds
@@ -88,7 +89,7 @@ def stub_features(
 def stub_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.services.adaptations.render_adaptation_assets",
-        lambda db, adaptation: {"thumbnail_variants": []},
+        lambda adaptation: {"thumbnail_variants": []},
     )
 
 
@@ -164,7 +165,7 @@ def test_regenerate_returns_cached_ready_row_without_regeneration(
     assert calls["count"] == 1
 
 
-def test_pending_rerquest_returns_cached_pending_row(
+def test_pending_request_returns_cached_pending_row(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
     _minds_env: None,
@@ -379,3 +380,180 @@ def test_asset_rendering_failure_fails_adaptation(
     assert detail["status"] == "FAILED"
     assert "ffmpeg failed" in detail["error_message"]
     assert detail["assets"] is None
+
+
+def test_excess_overlay_specs_fail_adaptation_instead_of_silently_dropping(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    # make_clip's clip window [2.0, 32.0] spans exactly 2 segments
+    stub_features(
+        monkeypatch,
+        features={
+            "overlay_spec": [
+                {"text": "one", "placement": "top", "style": "bold"},
+                {"text": "two", "placement": "center", "style": "bold"},
+                {"text": "three", "placement": "bottom", "style": "italic"},
+            ],
+            "caption_style": "bold white",
+            "stickers": [{"emoji": "🔥", "placement": "top-right"}],
+            "pinned_comment": "First!",
+        },
+    )
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        clip.job.file_path = clip.file_path
+        db.commit()
+
+    res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
+    adaptation_id = res.json()["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
+    assert detail["status"] == "FAILED"
+    assert "3 overlay specs" in detail["error_message"]
+    assert "2 segments" in detail["error_message"]
+
+
+def test_feature_manifest_validator_rejects_impossible_pairings() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="Unsupported adaptation target"):
+        minds.AdaptationFeatures(
+            platform="tiktok",
+            surface="LONG_FORM",
+            chapters=[{"title": "x", "timestamp": 1.0}],
+            tags=["t"],
+            poll={"question": "q", "options": ["a"]},
+            quiz=[{"question": "q", "answer": "a"}],
+            thumbnail_briefs=[{"frame_timestamp": 1.0, "overlay_text": "x"}],
+            shorts_link="s",
+        )
+    with pytest.raises(ValidationError, match="Unsupported adaptation target"):
+        minds.AdaptationFeatures(
+            platform="youtube",
+            surface="POST",
+            caption="x",
+            hashtags=["#x"],
+        )
+
+
+def test_feature_manifest_validator_requires_all_mandatory_features() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="youtube SHORTS requires platform_hooks"):
+        minds.AdaptationFeatures(
+            platform="youtube",
+            surface="SHORTS",
+            thumbnail_briefs=[
+                {"frame_timestamp": 1.0, "overlay_text": "x"} for _ in range(3)
+            ],
+        )
+    with pytest.raises(ValidationError, match="youtube SHORTS requires exactly 3 thumbnail_briefs"):
+        minds.AdaptationFeatures(
+            platform="youtube",
+            surface="SHORTS",
+            thumbnail_briefs=[{"frame_timestamp": 1.0, "overlay_text": "x"}],
+            platform_hooks=["h"],
+        )
+    with pytest.raises(ValidationError, match="youtube LONG_FORM requires shorts_link"):
+        minds.AdaptationFeatures(
+            platform="youtube",
+            surface="LONG_FORM",
+            chapters=[{"title": "x", "timestamp": 1.0}],
+            tags=["t"],
+            poll={"question": "q", "options": ["a"]},
+            quiz=[{"question": "q", "answer": "a"}],
+            thumbnail_briefs=[
+                {"frame_timestamp": 1.0, "overlay_text": "x"} for _ in range(3)
+            ],
+        )
+
+
+def test_concurrent_generate_requests_converge_on_cached_row(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.orm import Session
+
+    real_commit = Session.commit
+
+    def losing_commit(self):
+        # Simulate the losing side of a race: the winner's row appears
+        # between our read (no row) and our insert, so the unique constraint
+        # rejects our insert.
+        with get_session_factory()() as other:
+            other.add(ClipAdaptation(clip_id=clip.id, platform="x", surface="POST"))
+            real_commit(other)
+        raise IntegrityError(
+            "INSERT INTO clip_adaptations ...",
+            {},
+            Exception(
+                "UNIQUE constraint failed: "
+                "clip_adaptations.clip_id, clip_adaptations.platform, "
+                "clip_adaptations.surface"
+            ),
+        )
+
+    monkeypatch.setattr(Session, "commit", losing_commit)
+    try:
+        res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/x/POST")
+    finally:
+        monkeypatch.undo()
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["platform"] == "x"
+    assert body["surface"] == "POST"
+    assert body["status"] in ("PENDING", "GENERATING", "READY", "FAILED")
+
+    with get_session_factory()() as db:
+        rows = db.scalars(
+            select(ClipAdaptation).where(ClipAdaptation.clip_id == clip.id)
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].id == body["id"]
+
+
+def test_memory_history_written_only_after_row_is_ready(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    _minds_env: None,
+) -> None:
+    test_client, tmp_path = client
+    stub_rendering(monkeypatch)
+    stub_features(
+        monkeypatch,
+        features={
+            "overlay_spec": [{"text": "boom", "placement": "center", "style": "bold"}],
+            "caption_style": "bold white",
+            "stickers": [{"emoji": "🔥", "placement": "top-right"}],
+            "pinned_comment": "First!",
+        },
+    )
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+
+    statuses_at_fetch: list[str] = []
+
+    def capturing_fetch(agent_id):
+        with get_session_factory()() as db:
+            row = db.scalar(
+                select(ClipAdaptation).where(ClipAdaptation.clip_id == clip.id)
+            )
+            statuses_at_fetch.append(row.status.value if row else None)
+        return {"adaptation_history": []}
+
+    monkeypatch.setattr(minds, "fetch_memory", capturing_fetch)
+    monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
+
+    res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
+    adaptation_id = res.json()["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
+    assert detail["status"] == "READY"
+
+    assert statuses_at_fetch == ["GENERATING", "READY"]

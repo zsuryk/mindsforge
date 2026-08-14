@@ -176,6 +176,128 @@ describe("AdaptationStudio", () => {
     expect(writeText).toHaveBeenCalledWith("The hook — 0:02");
   });
 
+  it("renders tags as chips and copies them as a set", async () => {
+    const user = userEvent.setup();
+    stubFetch([makeReadyAdaptation()]);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    render(<AdaptationStudio clipId="clip-1" />);
+
+    const chips = await screen.findByText("editing");
+    expect(chips).toBeInTheDocument();
+    expect(screen.getByText("storytime")).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "Copy Tags" }));
+
+    expect(writeText).toHaveBeenCalledWith("editing\nstorytime");
+  });
+
+  it("hides Run Test & Compare on non-youtube surfaces", async () => {
+    const user = userEvent.setup();
+    stubFetch([
+      {
+        ...makeReadyAdaptation(),
+        platform: "tiktok",
+        surface: "POST",
+        features: {
+          overlay_spec: [{ text: "boom", placement: "center", style: "bold" }],
+          caption_style: "bold white",
+          stickers: [{ emoji: "🔥", placement: "top-right" }],
+          pinned_comment: "First!",
+        },
+      } as unknown as Adaptation,
+    ]);
+
+    render(<AdaptationStudio clipId="clip-1" />);
+
+    await user.click(await screen.findByRole("button", { name: "TikTok" }));
+    expect(await screen.findByText("READY")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /run test & compare/i })).not.toBeInTheDocument();
+  });
+
+  it("labels the button Generate for READY rows and Retry for FAILED rows", async () => {
+    const user = userEvent.setup();
+
+    render(<AdaptationStudio clipId="clip-1" />);
+    expect(await screen.findByRole("button", { name: /^Generate$/ })).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+    const failed = {
+      ...makeReadyAdaptation(),
+      status: "FAILED",
+      features: null,
+      assets: null,
+      error_message: "builder api down",
+    } as unknown as Adaptation;
+    const created = { ...failed, status: "PENDING" } as unknown as Adaptation;
+    stubFetchForGenerate({ created, ready: failed });
+
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }));
+
+    expect(await screen.findByRole("button", { name: /^Retry$/ })).toBeInTheDocument();
+  });
+
+  it("launches a long-form experiment with the youtube platform", async () => {
+    const user = userEvent.setup();
+    const longForm = {
+      ...makeReadyAdaptation(),
+      platform: "youtube",
+      surface: "LONG_FORM",
+      assets: {
+        ...makeReadyAdaptation().assets,
+        chapters_url: "/media/adaptations/adapt-1/chapters.txt",
+      },
+    } as Adaptation;
+    stubFetch([longForm]);
+    const created = {
+      id: "exp-2",
+      clip_id: "clip-1",
+      clip_title: "Clip",
+      platform: "youtube",
+      variant_kind: "THUMBNAIL",
+      status: "ACTIVE",
+      variants: [],
+      winning_variant_id: null,
+      learned_insight: null,
+      created_at: "2026-08-13T10:00:00Z",
+      concluded_at: null,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/ab-tests/start")) {
+        return Promise.resolve(jsonResponse(created, 201));
+      }
+      if (url.includes("/adaptations")) {
+        return Promise.resolve(jsonResponse([longForm]));
+      }
+      return Promise.resolve(jsonResponse([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdaptationStudio clipId="clip-1" />);
+
+    await user.click(await screen.findByRole("button", { name: /youtube video/i }));
+    await user.click(await screen.findByRole("button", { name: /run test & compare/i }));
+
+    const dialog = screen.getByRole("dialog", { name: "Launch A/B test" });
+    await user.click(within(dialog).getByRole("button", { name: "Launch" }));
+
+    expect(
+      await within(dialog).findByText(/a\/b test launched/i),
+    ).toBeInTheDocument();
+
+    const [, init] = fetchMock.mock.calls.find(([callUrl]) =>
+      String(callUrl).includes("/ab-tests/start"),
+    ) as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.platform).toBe("youtube");
+    expect(body.variant_kind).toBe("THUMBNAIL");
+  });
+
   it("shows the failure state with the error message", async () => {
     const user = userEvent.setup();
     const failed = {

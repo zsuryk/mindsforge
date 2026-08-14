@@ -38,6 +38,9 @@ async def _ab_worker_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Drop any previously-registered /media route (e.g. from a hot reload of
+    # this module) before remounting the media directory, so static assets
+    # are served fresh from the configured MEDIA_DIR.
     app.router.routes = [
         route
         for route in app.router.routes

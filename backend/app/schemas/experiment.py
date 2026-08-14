@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.models.experiment import AbExperimentStatus, AbExperimentVariantKind
 
-Platform = Literal["youtube_shorts", "tiktok", "x"]
+Platform = Literal["youtube_shorts", "youtube", "tiktok", "x"]
 
 
 class AbExperimentStartIn(BaseModel):

@@ -248,7 +248,41 @@ def test_unconfigured_minds_fails_job_at_scoring_stage(
     assert "fail-closed" in job["error_message"]
 
     clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
-    assert all(clip["virality_score"] is None for clip in clips)
+    assert clips == []
+
+
+def test_clip_less_job_fails_when_minds_unconfigured(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    _enable_pipeline(monkeypatch)
+    raw = tmp_path / "raw" / "video.mp4"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(b"fake media bytes")
+    monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
+    monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
+    monkeypatch.setattr(
+        transcription,
+        "transcribe",
+        lambda audio_path: Transcription(segments=[], duration_seconds=10.0),
+    )
+    monkeypatch.setattr(
+        media, "cut_clip", lambda source, dest, start, end: pytest.fail("cut called")
+    )
+    monkeypatch.delenv("MINDS_BUILDER_API_KEY", raising=False)
+    get_settings.cache_clear()
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/silent-no-minds.mp4"},
+    )
+    job_id = res.json()["job_id"]
+
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "FAILED"
+    assert "MINDS_BUILDER_API_KEY" in job["error_message"]
+    assert test_client.get(f"/api/v1/jobs/{job_id}/clips").json() == []
 
 
 def test_scoring_minds_error_fails_job(

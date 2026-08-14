@@ -469,7 +469,8 @@ def _youtube_long_form_reply() -> str:
         '"thumbnail_briefs": ['
         '{"frame_timestamp": 3.0, "overlay_text": "one"}, '
         '{"frame_timestamp": 4.0, "overlay_text": "two"}, '
-        '{"frame_timestamp": 5.0, "overlay_text": "three"}]}'
+        '{"frame_timestamp": 5.0, "overlay_text": "three"}], '
+        '"shorts_link": "Why I left YouTube"}'
     )
 
 
@@ -566,7 +567,7 @@ def test_generate_adaptation_features_validates_tiktok_post_shape(
             {"response": '{"overlay_spec": [{"text": "t", "placement": "center", "style": "bold"}]}'}
         ),
     )
-    with pytest.raises(minds.MindsError, match="caption_style, stickers"):
+    with pytest.raises(minds.MindsError, match="requires caption_style"):
         minds.generate_adaptation_features(CLIP, "tiktok", "POST", SEGMENTS)
 
 
@@ -579,7 +580,7 @@ def test_generate_adaptation_features_requires_x_caption_and_hashtags(
         "post",
         lambda url, headers, json, timeout: FakeResponse({"response": '{"caption": "hot take"}'}),
     )
-    with pytest.raises(minds.MindsError, match="caption and hashtags"):
+    with pytest.raises(minds.MindsError, match="requires hashtags"):
         minds.generate_adaptation_features(CLIP, "x", "POST", SEGMENTS)
 
 
