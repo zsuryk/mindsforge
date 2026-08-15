@@ -60,7 +60,7 @@ def _extract_clips(db: Session, job: Job, source: Path) -> None:
         )
 
 
-def _score_clips(db: Session, job: Job) -> None:
+def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
     """Ask the Mind to score each extracted clip and persist the verdict.
 
     Scoring is fail-closed (ADR-0002): Minds must be configured and every
@@ -93,6 +93,7 @@ def _score_clips(db: Session, job: Job) -> None:
             clip.transcript_text,
             duration_seconds=clip.end_time - clip.start_time,
             memory_context=memory_context,
+            conversation_alias=conversation_alias,
         )
         clip.virality_score = metadata.virality_score
         clip.suggested_hooks = metadata.model_dump()
@@ -144,7 +145,12 @@ def run_pipeline(job_id: str) -> None:
             job.status = JobStatus.EXTRACTING_CLIPS
             db.commit()
             _extract_clips(db, job, source)
-            _score_clips(db, job)
+            # Fresh conversation per run: retries re-send identical scoring
+            # prompts, and a Mind that sees the same templated prompt repeat in
+            # one conversation eventually refuses to answer (surfacing as a
+            # non-JSON reply). Isolating each attempt prevents that build-up.
+            run_alias = f"{minds.MESSAGING_ALIAS}-{job.id}-{uuid4().hex}"
+            _score_clips(db, job, run_alias)
             job.status = JobStatus.COMPLETED
             db.commit()
             logger.info("Job %s completed with clips extracted", job.id)

@@ -2,6 +2,7 @@ from typing import Any
 
 import httpx
 import pytest
+
 from app.services import minds
 
 
@@ -241,7 +242,7 @@ def test_generate_clip_metadata_parses_verdict(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             captured.update(agent_id=agent_id, prompt=prompt)
             or '{"virality_score": 82, "suggested_titles": ["A", "B"], '
             '"platform_hooks": {"youtube_shorts": ["s1"], "tiktok": ["t1"], "x": ["x1"]}}'
@@ -266,7 +267,7 @@ def test_generate_clip_metadata_includes_memory_context(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             captured.update(prompt=prompt)
             or '{"virality_score": 50, "suggested_titles": ["A"], '
             '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}'
@@ -288,7 +289,7 @@ def test_generate_clip_metadata_strips_markdown_fences(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             '```json\n{"virality_score": 10, "suggested_titles": ["A"], '
             '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}\n```'
         ),
@@ -304,7 +305,7 @@ def test_generate_clip_metadata_clamps_score_to_range(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             '{"virality_score": 150, "suggested_titles": ["A"], "platform_hooks": {}}'
         ),
     )
@@ -317,10 +318,52 @@ def test_generate_clip_metadata_raises_on_invalid_json(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds, "_message_mind", lambda agent_id, prompt: "not json at all"
+        minds, "_message_mind", lambda agent_id, prompt, **kwargs: "not json at all"
     )
-    with pytest.raises(minds.MindsError, match="Could not parse"):
+    with pytest.raises(minds.MindsError, match="no JSON object"):
         minds.generate_clip_metadata("text")
+
+
+def test_generate_clip_metadata_refusal_error_is_actionable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    refusal = (
+        "<p>I'm not going to keep replying to the same template without hearing "
+        "back from you, so let me say this once and plainly.</p>"
+        "<p>This is the fourth templated prompt you've sent me - and the third "
+        "copy…</p>"
+    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: refusal)
+
+    with pytest.raises(minds.MindsError) as excinfo:
+        minds.generate_clip_metadata("text")
+
+    message = str(excinfo.value)
+    assert "substring not found" not in message
+    assert "no JSON object" in message or "refus" in message.lower()
+
+
+def test_generate_clip_metadata_forwards_conversation_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    seen: dict[str, Any] = {}
+
+    def fake_message_mind(agent_id, prompt, **kwargs):
+        seen["agent_id"] = agent_id
+        seen["alias"] = kwargs.get("alias")
+        return (
+            '{"virality_score": 5, "suggested_titles": ["A"], '
+            '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}'
+        )
+
+    monkeypatch.setattr(minds, "_message_mind", fake_message_mind)
+
+    minds.generate_clip_metadata("text", conversation_alias="mindsforge-job-abc")
+
+    assert seen["agent_id"] == "agent-1"
+    assert seen["alias"] == "mindsforge-job-abc"
 
 
 def test_generate_clip_metadata_raises_on_missing_fields(
@@ -328,7 +371,7 @@ def test_generate_clip_metadata_raises_on_missing_fields(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds, "_message_mind", lambda agent_id, prompt: '{"virality_score": 50}'
+        minds, "_message_mind", lambda agent_id, prompt, **kwargs: '{"virality_score": 50}'
     )
     with pytest.raises(minds.MindsError, match="failed validation"):
         minds.generate_clip_metadata("text")
@@ -338,7 +381,7 @@ def test_generate_clip_metadata_raises_on_empty_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "   ")
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: "   ")
     with pytest.raises(minds.MindsError, match="missing 'response'"):
         minds.generate_clip_metadata("text")
 
@@ -378,7 +421,7 @@ def test_decide_experiment_winner_parses_verdict(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             captured.update(prompt=prompt)
             or '{"winning_variant_id": "v1", "reasoning": "Hook A held viewers longer; reuse this formula."}'
         ),
@@ -406,7 +449,7 @@ def test_decide_experiment_winner_strips_markdown_fences(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             '```json\n{"winning_variant_id": "v2", '
             '"reasoning": "debate-style hook won."}\n```'
         ),
@@ -421,7 +464,7 @@ def test_decide_experiment_winner_rejects_unknown_winner_id(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             '{"winning_variant_id": "ghost", "reasoning": "it felt right"}'
         ),
     )
@@ -436,7 +479,7 @@ def test_decide_experiment_winner_rejects_empty_reasoning(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: '{"winning_variant_id": "v1", "reasoning": "   "}',
+        lambda agent_id, prompt, **kwargs: '{"winning_variant_id": "v1", "reasoning": "   "}',
     )
     with pytest.raises(minds.MindsError, match="failed validation"):
         minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
@@ -446,7 +489,7 @@ def test_decide_experiment_winner_raises_on_empty_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "  ")
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: "  ")
     with pytest.raises(minds.MindsError, match="missing 'response'"):
         minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
 
@@ -486,7 +529,7 @@ def test_generate_adaptation_features_parses_long_form_manifest(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             captured.update(prompt=prompt) or _youtube_long_form_reply()
         ),
     )
@@ -517,7 +560,7 @@ def test_generate_adaptation_features_accepts_surface_echo(
     echoed = _youtube_long_form_reply().replace(
         '{"chapters"', '{"surface": "LONG_FORM", "chapters"', 1
     )
-    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: echoed)
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: echoed)
     manifest = minds.generate_adaptation_features(
         CLIP, "youtube", "LONG_FORM", SEGMENTS
     )
@@ -531,7 +574,7 @@ def test_generate_adaptation_features_rejects_surface_mismatch(
     echoed = _youtube_long_form_reply().replace(
         '{"chapters"', '{"surface": "SHORTS", "chapters"', 1
     )
-    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: echoed)
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: echoed)
     with pytest.raises(minds.MindsError, match="expected 'LONG_FORM'"):
         minds.generate_adaptation_features(CLIP, "youtube", "LONG_FORM", SEGMENTS)
 
@@ -546,7 +589,7 @@ def test_generate_adaptation_features_enforces_three_thumbnail_briefs(
         '{"frame_timestamp": 4.0, "overlay_text": "two"}], '
         '"platform_hooks": ["hook"]}'
     )
-    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: reply)
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: reply)
     with pytest.raises(minds.MindsError, match="exactly 3 thumbnail_briefs"):
         minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
 
@@ -558,7 +601,7 @@ def test_generate_adaptation_features_validates_tiktok_post_shape(
     monkeypatch.setattr(
         minds,
         "_message_mind",
-        lambda agent_id, prompt: (
+        lambda agent_id, prompt, **kwargs: (
             '{"overlay_spec": [{"text": "t", "placement": "center", "style": "bold"}]}'
         ),
     )
@@ -571,7 +614,7 @@ def test_generate_adaptation_features_requires_x_caption_and_hashtags(
 ) -> None:
     _configure_minds(monkeypatch)
     monkeypatch.setattr(
-        minds, "_message_mind", lambda agent_id, prompt: '{"caption": "hot take"}'
+        minds, "_message_mind", lambda agent_id, prompt, **kwargs: '{"caption": "hot take"}'
     )
     with pytest.raises(minds.MindsError, match="requires hashtags"):
         minds.generate_adaptation_features(CLIP, "x", "POST", SEGMENTS)
@@ -581,8 +624,8 @@ def test_generate_adaptation_features_raises_on_invalid_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "not json")
-    with pytest.raises(minds.MindsError, match="Could not parse"):
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: "not json")
+    with pytest.raises(minds.MindsError, match="no JSON object"):
         minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
 
 
@@ -590,7 +633,7 @@ def test_generate_adaptation_features_raises_on_empty_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt: "")
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: "")
     with pytest.raises(minds.MindsError, match="missing 'response'"):
         minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
 

@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
 from app.services.clips import build_clip_candidates
 from app.services.transcription import TranscriptSegment
-from fastapi.testclient import TestClient
 
 
 def segments(*spans: tuple[float, float, str]) -> list[TranscriptSegment]:
@@ -364,11 +365,11 @@ def test_rerunning_pipeline_clears_stale_error_message(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services.pipeline import run_pipeline
     from sqlalchemy import select
 
     from app.db.base import get_session_factory
     from app.models.job import Job
+    from app.services.pipeline import run_pipeline
 
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
@@ -395,7 +396,7 @@ def test_rerunning_pipeline_clears_stale_error_message(
     monkeypatch.setattr(
         minds,
         "generate_clip_metadata",
-        lambda transcript, duration_seconds=None, memory_context=None: minds.ClipMetadata(
+        lambda transcript, duration_seconds=None, memory_context=None, **kwargs: minds.ClipMetadata(
             virality_score=60,
             suggested_titles=["A"],
             platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},

@@ -259,10 +259,10 @@ def update_memory(agent_id: str, key: str, value: Any) -> bool:
     return True
 
 
-def _ensure_conversation(agent_id: str) -> None:
+def _ensure_conversation(agent_id: str, alias: str = MESSAGING_ALIAS) -> None:
     """Create the message conversation for this Mind if it does not exist."""
     response = _post(
-        "/v1/messaging/conversation", {"alias": MESSAGING_ALIAS, "mindId": agent_id}
+        "/v1/messaging/conversation", {"alias": alias, "mindId": agent_id}
     )
     if response.status_code in (200, 409):
         return
@@ -288,8 +288,8 @@ def _is_alias_already_exists(response: httpx.Response) -> bool:
     return (body.get("error") or {}).get("message") == "alias already exists"
 
 
-def _latest_history_fingerprint() -> str | None:
-    response = _get(f"/v1/messaging/histories/{MESSAGING_ALIAS}", params={"limit": 1})
+def _latest_history_fingerprint(alias: str = MESSAGING_ALIAS) -> str | None:
+    response = _get(f"/v1/messaging/histories/{alias}", params={"limit": 1})
     if response.status_code != 200:
         raise MindsError(f"History fetch failed with status {response.status_code}")
     rows = _decode_json(response, "History fetch")
@@ -334,17 +334,17 @@ def _is_newer_than(row: dict[str, Any], cursor: str | None) -> bool:
     return _fingerprint_recency(str(fingerprint)) > _fingerprint_recency(cursor)
 
 
-def _message_mind(agent_id: str, prompt: str) -> str:
+def _message_mind(agent_id: str, prompt: str, alias: str = MESSAGING_ALIAS) -> str:
     """Send a prompt to the Mind and block until it replies, returning the text.
 
     The Builder API messaging flow is asynchronous: create the conversation,
     POST the message, then poll history for a Mind reply (senderType 0) that
     is newer than the message we just sent.
     """
-    _ensure_conversation(agent_id)
-    cursor = _latest_history_fingerprint()
+    _ensure_conversation(agent_id, alias)
+    cursor = _latest_history_fingerprint(alias)
     response = _post(
-        "/v1/messaging/message", {"alias": MESSAGING_ALIAS, "messageText": prompt}
+        "/v1/messaging/message", {"alias": alias, "messageText": prompt}
     )
     if response.status_code != 200:
         raise MindsError(f"Message send failed with status {response.status_code}")
@@ -352,7 +352,7 @@ def _message_mind(agent_id: str, prompt: str) -> str:
     deadline = time.monotonic() + MESSAGE_REPLY_TIMEOUT_SECONDS
     while True:
         history = _get(
-            f"/v1/messaging/histories/{MESSAGING_ALIAS}",
+            f"/v1/messaging/histories/{alias}",
             params={"limit": 50},
         )
         if history.status_code != 200:
@@ -433,11 +433,16 @@ def _parse_json_object(text: str, context: str) -> dict[str, Any]:
         fenced = text.split("```", 2)
         if len(fenced) >= 2:
             text = fenced[1].removeprefix("json").strip()
+    preview = f"{text[:200]}…" if len(text) > 200 else text
+    if "{" not in text:
+        raise MindsError(
+            f"{context} reply contained no JSON object — the Mind may have "
+            f"refused the prompt or replied in prose; reply was: {preview!r}"
+        )
     try:
         start, end = text.index("{"), text.rindex("}")
         data = json.loads(text[start : end + 1])
     except (ValueError, json.JSONDecodeError) as exc:
-        preview = f"{text[:200]}…" if len(text) > 200 else text
         raise MindsError(
             f"Could not parse {context} JSON: {exc}; reply was: {preview!r}"
         ) from exc
@@ -459,8 +464,15 @@ def generate_clip_metadata(
     *,
     duration_seconds: float | None = None,
     memory_context: str | None = None,
+    conversation_alias: str | None = None,
 ) -> ClipMetadata:
     """Prompt the Mind to score a clip and return the structured verdict.
+
+    ``conversation_alias`` isolates this prompt in its own conversation when
+    provided. Retrying a job re-sends byte-identical prompts for the same
+    clips; without isolation the Mind sees the same templated prompt repeated
+    in one conversation and eventually refuses to answer, which then fails the
+    job (ADR-0002). Fresh conversations per attempt prevent that build-up.
 
     Raises MindsError on any failure (missing credentials, HTTP errors,
     unparseable or invalid responses) so callers can degrade gracefully.
@@ -468,7 +480,7 @@ def generate_clip_metadata(
     prompt = _build_metadata_prompt(
         transcript, duration_seconds=duration_seconds, memory_context=memory_context
     )
-    message = _message_mind(_agent_id(), prompt)
+    message = _message_mind(_agent_id(), prompt, alias=conversation_alias or MESSAGING_ALIAS)
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Clip metadata response missing 'response' text")
     return _parse_metadata(message)

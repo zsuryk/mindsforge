@@ -1,11 +1,12 @@
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
 from app.core.config import get_settings
 from app.services import media, minds, transcription
 from app.services.pipeline import run_pipeline
 from app.services.transcription import Transcription, TranscriptSegment
-from fastapi.testclient import TestClient
 
 FAKE_SEGMENTS = [
     TranscriptSegment(text="hello world.", start=0.0, end=1.5),
@@ -26,7 +27,7 @@ def _stub_minds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         minds,
         "generate_clip_metadata",
-        lambda transcript, duration_seconds=None, memory_context=None: minds.ClipMetadata(
+        lambda transcript, duration_seconds=None, memory_context=None, **kwargs: minds.ClipMetadata(
             virality_score=80,
             suggested_titles=["Title A", "Title B"],
             platform_hooks={"youtube_shorts": ["s"], "tiktok": ["t"], "x": ["x"]},
@@ -94,9 +95,10 @@ def test_url_job_visits_downloading_and_extracting_clips_statuses(
     raw.write_bytes(b"fake media bytes")
     statuses_seen: list[str] = []
 
+    from sqlalchemy import select
+
     from app.db.base import get_session_factory
     from app.models.job import Job
-    from sqlalchemy import select
 
     def fake_download(url: str, target_dir: Path) -> Path:
         with get_session_factory()() as db:
@@ -293,7 +295,7 @@ def test_scoring_minds_error_fails_job(
     _enable_pipeline(monkeypatch)
     _stub_pipeline_stages(monkeypatch, tmp_path)
 
-    def failing_metadata(transcript, duration_seconds=None, memory_context=None):
+    def failing_metadata(transcript, duration_seconds=None, memory_context=None, **kwargs):
         raise minds.MindsError("builder api down")
 
     monkeypatch.setattr(minds, "generate_clip_metadata", failing_metadata)
@@ -326,7 +328,7 @@ def test_memory_fetch_failure_still_scores_without_context(
         lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
     )
 
-    def capturing_metadata(transcript, duration_seconds=None, memory_context=None):
+    def capturing_metadata(transcript, duration_seconds=None, memory_context=None, **kwargs):
         contexts.append(memory_context)
         return minds.ClipMetadata(
             virality_score=70,
@@ -347,3 +349,42 @@ def test_memory_fetch_failure_still_scores_without_context(
     clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
     assert all(clip["virality_score"] == 70 for clip in clips)
     assert contexts == [None]
+
+
+def test_each_pipeline_run_uses_fresh_conversation_alias(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    _enable_pipeline(monkeypatch)
+    _stub_pipeline_stages(monkeypatch, tmp_path)
+    aliases: list[str] = []
+
+    def capturing_metadata(transcript, duration_seconds=None, memory_context=None, **kwargs):
+        aliases.append(kwargs.get("conversation_alias"))
+        return minds.ClipMetadata(
+            virality_score=70,
+            suggested_titles=["A"],
+            platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},
+        )
+
+    monkeypatch.setattr(minds, "generate_clip_metadata", capturing_metadata)
+
+    first = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/alias-one.mp4"},
+    ).json()["job_id"]
+    second = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/alias-two.mp4"},
+    ).json()["job_id"]
+
+    assert test_client.get(f"/api/v1/jobs/{first}").json()["status"] == "COMPLETED"
+    assert test_client.get(f"/api/v1/jobs/{second}").json()["status"] == "COMPLETED"
+
+    assert len(aliases) == 2
+    assert aliases[0] != aliases[1]
+    assert all(
+        alias is not None and alias.startswith(f"{minds.MESSAGING_ALIAS}-")
+        for alias in aliases
+    )
