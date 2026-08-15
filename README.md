@@ -104,6 +104,7 @@ Open `http://localhost:3000`.
 | Port 8000 already in use | Quit the other process, or run with `PORT=8001` and point the frontend's `NEXT_PUBLIC_API_URL` at it. |
 | Video fails to download | Some hosts (e.g. YouTube) block automated downloads — use a direct `.mp4` URL instead. |
 | Red status light in the header | Backend isn't running — start it (see **Run**). |
+| Groq transcription failed: Error code: 403 | Region unsupported by Groq — use a VPN |
 
 ---
 
