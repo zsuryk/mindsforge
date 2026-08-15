@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -384,7 +385,7 @@ def test_each_pipeline_run_uses_fresh_conversation_alias(
 
     assert len(aliases) == 2
     assert aliases[0] != aliases[1]
-    assert all(
-        alias is not None and alias.startswith(f"{minds.MESSAGING_ALIAS}-")
-        for alias in aliases
-    )
+    for alias in aliases:
+        assert alias is not None and alias.startswith(f"{minds.MESSAGING_ALIAS}-")
+        assert len(alias) <= 64, "Builder API rejects aliases longer than 64 chars"
+        assert re.fullmatch(r"[a-z0-9_-]+", alias)

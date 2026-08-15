@@ -149,7 +149,9 @@ def run_pipeline(job_id: str) -> None:
             # prompts, and a Mind that sees the same templated prompt repeat in
             # one conversation eventually refuses to answer (surfacing as a
             # non-JSON reply). Isolating each attempt prevents that build-up.
-            run_alias = f"{minds.MESSAGING_ALIAS}-{job.id}-{uuid4().hex}"
+            # The Builder API caps aliases at 64 chars, so the job id is
+            # truncated and only the fresh hex keeps the alias unique.
+            run_alias = f"{minds.MESSAGING_ALIAS}-{job.id[:8]}-{uuid4().hex}"
             _score_clips(db, job, run_alias)
             job.status = JobStatus.COMPLETED
             db.commit()
