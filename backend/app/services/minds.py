@@ -391,39 +391,53 @@ def build_memory_context(memory: dict[str, Any]) -> str:
     return rendered
 
 
-def _build_metadata_prompt(
+def _build_metadata_read_prompt(
     transcript: str,
     *,
     duration_seconds: float | None,
     memory_context: str | None,
 ) -> str:
-    memory_block = memory_context if memory_context else "none"
     duration_block = (
         f"{duration_seconds:.1f}s" if duration_seconds is not None else "unknown"
     )
+    memory_block = (
+        "Creator memory context (brand voice, past insights):\n"
+        f"{memory_context}\n\n"
+        if memory_context
+        else "There is no creator memory or brand voice attached to this clip, "
+        "so judge purely the content.\n\n"
+    )
     return (
-        "You are a short-form content strategist working with a creator. "
-        "Score the clip transcript below and produce platform-specific hooks.\n\n"
+        "I need your honest read on a clip. You are not fabricating anything: "
+        "estimate engagement potential as best you can from the transcript alone. "
+        "A low score (even 0) is a completely valid answer, and doubt is allowed.\n\n"
         f"Clip transcript:\n{transcript}\n\n"
         f"Clip duration: {duration_block}\n\n"
-        "Creator memory context (historical insights):\n"
-        f"{memory_block}\n\n"
-        "Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n"
-        "{\n"
-        '  "virality_score": 0-100 integer,\n'
-        '  "suggested_titles": ["3-5 short titles under 70 characters"],\n'
-        '  "platform_hooks": {\n'
-        '    "youtube_shorts": ["3-5 hooks"],\n'
-        '    "tiktok": ["3-5 hooks"],\n'
-        '    "x": ["3-5 hooks"]\n'
-        "  }\n"
-        "}\n"
-        "Rules:\n"
-        "- virality_score reflects this clip's engagement potential for this creator.\n"
-        "- suggested_titles: hook-driven titles, each under 70 characters.\n"
-        "- platform_hooks: tailor each set to the platform's style — YouTube Shorts: "
-        "curiosity and retention; TikTok: trend-aware, first-frame hooks; "
-        "X: text-first, opinionated or debate-style hooks."
+        f"{memory_block}"
+        "Give me your read in prose: what this clip is, who it is for, and its "
+        "rough engagement potential. I will then ask you to convert it into a "
+        "structured verdict."
+    )
+
+
+_METADATA_VERDICT_SCHEMA = (
+    "{\n"
+    '  "virality_score": 0-100 integer (your honest estimate; a low number is valid),\n'
+    '  "suggested_titles": ["3-5 short titles under 70 characters"],\n'
+    '  "platform_hooks": {\n'
+    '    "youtube_shorts": ["3-5 hooks"],\n'
+    '    "tiktok": ["3-5 hooks"],\n'
+    '    "x": ["3-5 hooks"]\n'
+    "  }\n"
+    "}"
+)
+
+
+def _build_metadata_fill_prompt() -> str:
+    return (
+        "Here is the schema for the structured verdict. Fill it in with your "
+        "read from your last message:\n"
+        f"{_METADATA_VERDICT_SCHEMA}"
     )
 
 
@@ -468,6 +482,13 @@ def generate_clip_metadata(
 ) -> ClipMetadata:
     """Prompt the Mind to score a clip and return the structured verdict.
 
+    The Mind answers in two steps: first an honest prose read — which it gives
+    readily even for brandless or meme content when framed as estimation rather
+    than fabrication — then a schema-fill message converting that read into the
+    structured verdict. A single-message JSON-only prompt reads as "fabricate a
+    score" to the Mind and triggers refusals that fail the job. If the read
+    already contains a parseable verdict, the fill step is skipped.
+
     ``conversation_alias`` isolates this prompt in its own conversation when
     provided. Retrying a job re-sends byte-identical prompts for the same
     clips; without isolation the Mind sees the same templated prompt repeated
@@ -477,13 +498,22 @@ def generate_clip_metadata(
     Raises MindsError on any failure (missing credentials, HTTP errors,
     unparseable or invalid responses) so callers can degrade gracefully.
     """
-    prompt = _build_metadata_prompt(
+    alias = conversation_alias or MESSAGING_ALIAS
+    agent_id = _agent_id()
+    read_prompt = _build_metadata_read_prompt(
         transcript, duration_seconds=duration_seconds, memory_context=memory_context
     )
-    message = _message_mind(_agent_id(), prompt, alias=conversation_alias or MESSAGING_ALIAS)
-    if not isinstance(message, str) or not message.strip():
+    read = _message_mind(agent_id, read_prompt, alias=alias)
+    if not isinstance(read, str) or not read.strip():
         raise MindsError("Clip metadata response missing 'response' text")
-    return _parse_metadata(message)
+    try:
+        return _parse_metadata(read)
+    except MindsError:
+        fill = _build_metadata_fill_prompt()
+        message = _message_mind(agent_id, fill, alias=alias)
+        if not isinstance(message, str) or not message.strip():
+            raise MindsError("Clip metadata response missing 'response' text")
+        return _parse_metadata(message)
 
 
 def _build_winner_prompt(

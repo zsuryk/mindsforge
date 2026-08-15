@@ -344,6 +344,57 @@ def test_generate_clip_metadata_refusal_error_is_actionable(
     assert "no JSON object" in message or "refus" in message.lower()
 
 
+def test_generate_clip_metadata_uses_two_step_flow_when_read_is_prose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prose honest read is followed by a schema-fill message; the fill's
+    JSON is parsed into the verdict."""
+    _configure_minds(monkeypatch)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt, **kwargs: (
+            calls.append(prompt)
+            or (
+                "<p>Honest read: it's a two-decade-old meme, maybe 8/100.</p>"
+                if len(calls) == 1
+                else '{"virality_score": 8, "suggested_titles": ["A"], '
+                '"platform_hooks": {"youtube_shorts": ["s1"], "tiktok": ["t1"], "x": ["x1"]}}'
+            )
+        ),
+    )
+
+    metadata = minds.generate_clip_metadata("hello world.")
+
+    assert metadata.virality_score == 8
+    assert len(calls) == 2
+    assert "honest read" in calls[0].lower()
+    assert '"virality_score"' in calls[1]
+    assert "schema" in calls[1].lower()
+
+
+def test_generate_clip_metadata_skips_fill_when_read_is_parseable_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt, **kwargs: (
+            calls.append(prompt)
+            or '{"virality_score": 42, "suggested_titles": ["A"], '
+            '"platform_hooks": {"youtube_shorts": [], "tiktok": [], "x": []}}'
+        ),
+    )
+
+    metadata = minds.generate_clip_metadata("text")
+
+    assert metadata.virality_score == 42
+    assert len(calls) == 1
+
+
 def test_generate_clip_metadata_forwards_conversation_alias(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
