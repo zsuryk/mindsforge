@@ -457,6 +457,15 @@ def _parse_json_object(text: str, context: str) -> dict[str, Any]:
         start, end = text.index("{"), text.rindex("}")
         data = json.loads(text[start : end + 1])
     except (ValueError, json.JSONDecodeError) as exc:
+        # A reply that is prose but happens to contain braces (e.g. the Mind
+        # quoting the prompt shape while refusing) must not leak a cryptic
+        # json.JSONDecodeError; name the likely refusal instead. A reply that
+        # is essentially all JSON with a syntax error keeps the parse detail.
+        if text[:start].strip() or text[end + 1 :].strip():
+            raise MindsError(
+                f"{context} reply contained no JSON object — the Mind may have "
+                f"refused the prompt or replied in prose; reply was: {preview!r}"
+            ) from exc
         raise MindsError(
             f"Could not parse {context} JSON: {exc}; reply was: {preview!r}"
         ) from exc
@@ -623,48 +632,84 @@ ADAPTATION_FEATURE_SHAPES: dict[tuple[str, str], str] = {
 }
 
 
-def _build_adaptation_prompt(
+_ADAPTATION_RULES = (
+    "Rules:\n"
+    "- frame_timestamp values must lie inside the clip window "
+    "[{start}s, {end}s].\n"
+    "- youtube surfaces: exactly 3 thumbnail_briefs for Test & Compare.\n"
+    "- chapter timestamps are clip-relative seconds inside the clip window.\n"
+    "- overlay_spec entries must match spoken segments by content, with a "
+    "placement (top|center|bottom) and a style (bold|outlined|italic).\n"
+    "- Everything must be grounded in the clip transcript; do not invent facts.\n"
+    "- Referencing past adaptations and insights is encouraged; the history "
+    "above is the creator's compounding learning."
+)
+
+
+def _adaptation_clip_block(clip: dict[str, Any]) -> str:
+    return (
+        f"Clip id: {clip.get('id')}\n"
+        f"Clip title: {clip.get('title', '')}\n"
+        f"Clip window: [{clip.get('start_time')}s, {clip.get('end_time')}s]\n"
+        f"Clip transcript:\n{clip.get('transcript', '')}"
+    )
+
+
+def _adaptation_segment_block(segments: list[dict[str, Any]]) -> str:
+    return "\n".join(
+        f"- [{segment.get('start')}s → {segment.get('end')}s] {segment.get('text', '')}"
+        for segment in segments
+    )
+
+
+def _adaptation_shape(platform: str, surface: str) -> str:
+    shape = ADAPTATION_FEATURE_SHAPES.get((platform, surface))
+    if shape is None:
+        raise MindsError(f"Unsupported adaptation target {platform}/{surface}")
+    return shape
+
+
+def _build_adaptation_read_prompt(
     clip: dict[str, Any],
     platform: str,
     surface: str,
     segments: list[dict[str, Any]],
     memory_context: str | None,
 ) -> str:
+    """Prose honest read of how to package the clip — no JSON demanded, so the
+    Mind can engage honestly without reading the prompt as a fabrication ask.
+    A schema-fill message (see ``_build_adaptation_fill_prompt``) converts the
+    read into the structured manifest afterwards (ADR-0002, two-step flow)."""
     memory_block = memory_context if memory_context else "none"
-    clip_block = (
-        f"Clip id: {clip.get('id')}\n"
-        f"Clip title: {clip.get('title', '')}\n"
-        f"Clip window: [{clip.get('start_time')}s, {clip.get('end_time')}s]\n"
-        f"Clip transcript:\n{clip.get('transcript', '')}"
-    )
-    segment_lines = "\n".join(
-        f"- [{segment.get('start')}s → {segment.get('end')}s] {segment.get('text', '')}"
-        for segment in segments
-    )
-    shape = ADAPTATION_FEATURE_SHAPES.get((platform, surface))
-    if shape is None:
-        raise MindsError(f"Unsupported adaptation target {platform}/{surface}")
     return (
-        "You are a platform-native content packager working with a creator. "
-        "Author the complete feature manifest for publishing one cut clip on "
-        f"the creator's {platform} ({surface}) channel.\n\n"
-        f"{clip_block}\n\n"
+        "I need your honest read on a clip before packaging it. You are not "
+        "fabricating anything: everything must be grounded in the clip "
+        "transcript; do not invent facts.\n\n"
+        f"{_adaptation_clip_block(clip)}\n\n"
         "Timed transcript segments:\n"
-        f"{segment_lines}\n\n"
+        f"{_adaptation_segment_block(segments)}\n\n"
         "Creator memory context (brand voice, past insights, previous adaptations):\n"
         f"{memory_block}\n\n"
-        "Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n"
+        "Give me your read in prose: what this clip is, who it is for, and how "
+        f"you would package it for the creator's {platform} ({surface}) channel "
+        "— which features fit, what the caption/hooks/overlays should say, and "
+        "which frames to pull for thumbnails. I will then ask you to convert it "
+        "into the structured feature manifest."
+    )
+
+
+def _build_adaptation_fill_prompt(
+    clip: dict[str, Any],
+    platform: str,
+    surface: str,
+) -> str:
+    """Schema-fill message converting the prose read into the feature manifest."""
+    shape = _adaptation_shape(platform, surface)
+    return (
+        "Here is the schema for the feature manifest. Fill it in with your read "
+        "from your last message:\n"
         f"{shape}"
-        "Rules:\n"
-        "- frame_timestamp values must lie inside the clip window "
-        f"[{clip.get('start_time')}s, {clip.get('end_time')}s].\n"
-        "- youtube surfaces: exactly 3 thumbnail_briefs for Test & Compare.\n"
-        "- chapter timestamps are clip-relative seconds inside the clip window.\n"
-        "- overlay_spec entries must match spoken segments by content, with a "
-        "placement (top|center|bottom) and a style (bold|outlined|italic).\n"
-        "- Everything must be grounded in the clip transcript; do not invent facts.\n"
-        "- Referencing past adaptations and insights is encouraged; the history "
-        "above is the creator's compounding learning."
+        f"{_ADAPTATION_RULES.format(start=clip.get('start_time'), end=clip.get('end_time'))}"
     )
 
 
@@ -692,14 +737,38 @@ def generate_adaptation_features(
     segments: list[dict[str, Any]],
     *,
     memory_context: str | None = None,
+    conversation_alias: str | None = None,
 ) -> AdaptationFeatures:
     """Ask the Mind to author the feature manifest for one platform-surface.
+
+    Two-step flow mirrors clip scoring (see ``generate_clip_metadata``): the
+    Mind first gives an honest prose read of how to package the clip, then a
+    schema-fill message converts that read into the manifest. A single-message
+    JSON-only prompt reads as "fabricate a manifest" and triggers prose
+    refusals that fail the adaptation. If the read already contains a
+    parseable manifest, the fill step is skipped.
+
+    ``conversation_alias`` isolates this prompt in its own conversation when
+    provided. Retrying an adaptation re-sends byte-identical prompts; without
+    isolation the Mind sees the same templated prompt repeat in one
+    conversation and eventually refuses (ADR-0002).
 
     Raises MindsError on any failure (missing credentials, HTTP errors,
     unparseable or invalid manifests) so the adaptation fails closed.
     """
-    prompt = _build_adaptation_prompt(clip, platform, surface, segments, memory_context)
-    message = _message_mind(_agent_id(), prompt)
-    if not isinstance(message, str) or not message.strip():
+    alias = conversation_alias or MESSAGING_ALIAS
+    agent_id = _agent_id()
+    read_prompt = _build_adaptation_read_prompt(
+        clip, platform, surface, segments, memory_context
+    )
+    read = _message_mind(agent_id, read_prompt, alias=alias)
+    if not isinstance(read, str) or not read.strip():
         raise MindsError("Adaptation features response missing 'response' text")
-    return _parse_adaptation_features(message, platform, surface)
+    try:
+        return _parse_adaptation_features(read, platform, surface)
+    except MindsError:
+        fill = _build_adaptation_fill_prompt(clip, platform, surface)
+        message = _message_mind(agent_id, fill, alias=alias)
+        if not isinstance(message, str) or not message.strip():
+            raise MindsError("Adaptation features response missing 'response' text")
+        return _parse_adaptation_features(message, platform, surface)

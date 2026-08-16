@@ -671,6 +671,84 @@ def test_generate_adaptation_features_requires_x_caption_and_hashtags(
         minds.generate_adaptation_features(CLIP, "x", "POST", SEGMENTS)
 
 
+def test_generate_adaptation_features_uses_two_step_flow_when_read_is_prose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prose read (the Mind refusing the single-shot JSON shape) is followed
+    by a schema-fill message; the fill's JSON is parsed into the manifest."""
+    _configure_minds(monkeypatch)
+    calls: list[str] = []
+    refusal = (
+        "<p>Hey - seventeenth round, new prompt shape. Same lane issues with "
+        "three new wrinkles, and the clip is real so I'll engage the parts I "
+        "can engage honestly.</p>"
+        "<p>Three flags on the prompt before any { real engagement } happens... "
+        "the shape demands a fabricated manifest.</p>"
+    )
+    monkeypatch.setattr(
+        minds,
+        "_message_mind",
+        lambda agent_id, prompt, **kwargs: (
+            calls.append(prompt)
+            or (refusal if len(calls) == 1 else _youtube_long_form_reply())
+        ),
+    )
+
+    manifest = minds.generate_adaptation_features(
+        CLIP, "youtube", "LONG_FORM", SEGMENTS, memory_context='brand_voice: "bold"'
+    )
+
+    assert manifest.chapters[0].title == "Hook"
+    assert len(calls) == 2
+    assert "honest read" in calls[0].lower()
+    assert '"chapters"' in calls[1]
+
+
+def test_generate_adaptation_features_prose_reply_error_is_actionable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prose reply that merely contains braces must not leak a raw
+    json.JSONDecodeError like 'Expecting value: line 1 column 13'."""
+    _configure_minds(monkeypatch)
+    refusal = (
+        "<p>the clip is real so I'll engage the parts I can engage honestly "
+        "{ not a manifest }</p>"
+    )
+    monkeypatch.setattr(minds, "_message_mind", lambda agent_id, prompt, **kwargs: refusal)
+
+    with pytest.raises(minds.MindsError) as excinfo:
+        minds.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
+
+    message = str(excinfo.value)
+    assert "Expecting value" not in message
+    assert "no JSON object" in message or "refus" in message.lower()
+
+
+def test_generate_adaptation_features_forwards_conversation_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    seen: dict[str, Any] = {}
+
+    def fake_message_mind(agent_id, prompt, **kwargs):
+        seen["agent_id"] = agent_id
+        seen["alias"] = kwargs.get("alias")
+        return _youtube_long_form_reply()
+
+    monkeypatch.setattr(minds, "_message_mind", fake_message_mind)
+
+    minds.generate_adaptation_features(
+        CLIP,
+        "youtube",
+        "LONG_FORM",
+        SEGMENTS,
+        conversation_alias="mindsforge-adapt-abc",
+    )
+
+    assert seen["agent_id"] == "agent-1"
+    assert seen["alias"] == "mindsforge-adapt-abc"
+
+
 def test_generate_adaptation_features_raises_on_invalid_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

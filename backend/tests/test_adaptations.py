@@ -76,7 +76,9 @@ def stub_features(
     features: dict | None = None,
     error: Exception | None = None,
 ) -> None:
-    def generate(clip, platform, surface, segments, memory_context=None):
+    def generate(
+        clip, platform, surface, segments, memory_context=None, conversation_alias=None
+    ):
         if error is not None:
             raise error
         return minds.AdaptationFeatures(
@@ -138,7 +140,7 @@ def test_regenerate_returns_cached_ready_row_without_regeneration(
 
     calls = {"count": 0}
 
-    def counting_generate(clip, platform, surface, segments, memory_context=None):
+    def counting_generate(clip, platform, surface, segments, memory_context=None, **kwargs):
         calls["count"] += 1
         return minds.AdaptationFeatures(
             platform=platform,
@@ -238,6 +240,51 @@ def test_failed_adaptation_can_be_retried(
     assert detail["status"] == "READY"
     assert detail["features"]["pinned_comment"] == "First!"
     assert detail["error_message"] is None
+
+
+def test_each_adaptation_attempt_uses_fresh_conversation_alias(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    stub_rendering(monkeypatch)
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+    aliases: list[str] = []
+
+    def capturing_generate(clip, platform, surface, segments, memory_context=None, **kwargs):
+        aliases.append(kwargs.get("conversation_alias"))
+        features = (
+            {
+                "thumbnail_briefs": [
+                    {"frame_timestamp": 3.0, "overlay_text": f"thumb {i}"} for i in range(3)
+                ],
+                "platform_hooks": ["hook"],
+            }
+            if platform == "youtube"
+            else {"caption": "hot take", "hashtags": ["#hot"]}
+        )
+        return minds.AdaptationFeatures(platform=platform, surface=surface, **features)
+
+    monkeypatch.setattr(minds, "generate_adaptation_features", capturing_generate)
+
+    first = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/youtube/SHORTS")
+    assert first.status_code == 202
+    first_id = first.json()["id"]
+    ready = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{first_id}").json()
+    assert ready["status"] == "READY"
+
+    second = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/x/POST")
+    assert second.status_code == 202
+    second_id = second.json()["id"]
+    ready = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{second_id}").json()
+    assert ready["status"] == "READY"
+
+    assert len(aliases) == 2
+    assert aliases[0] != aliases[1]
+    for alias in aliases:
+        assert alias is not None and alias.startswith(f"{minds.MESSAGING_ALIAS}-")
+        assert len(alias) <= 64, "Builder API rejects aliases longer than 64 chars"
 
 
 def test_generate_adaptation_404s_for_unknown_clip(

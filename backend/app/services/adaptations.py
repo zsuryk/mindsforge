@@ -1,5 +1,6 @@
 import logging
 from dataclasses import asdict
+from uuid import uuid4
 
 from app.core.config import get_settings
 from app.db.base import get_session_factory
@@ -91,6 +92,14 @@ def generate_adaptation(adaptation_id: str) -> None:
                 surface=adaptation.surface.value,
                 segments=[asdict(segment) for segment in segments],
                 memory_context=_memory_context(settings),
+                # Fresh conversation per attempt: retries re-send byte-identical
+                # prompts, and a Mind that sees the same templated prompt repeat
+                # in one conversation eventually refuses in prose (ADR-0002).
+                # The Builder API caps aliases at 64 chars, so the adaptation id
+                # is truncated and only the fresh hex keeps the alias unique.
+                conversation_alias=(
+                    f"{minds.MESSAGING_ALIAS}-adapt-{adaptation.id[:8]}-{uuid4().hex}"
+                ),
             )
             adaptation.features = manifest.model_dump(exclude={"platform", "surface"})
             db.commit()
