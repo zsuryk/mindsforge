@@ -108,6 +108,84 @@ def test_transcribe_parses_segments_from_real_groq_response(
     ]
 
 
+def test_transcribe_local_maps_faster_whisper_segments(tmp_path, monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "local")
+    get_settings.cache_clear()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"wav")
+
+    class _FakeSegment:
+        def __init__(self, text: str, start: float, end: float) -> None:
+            self.text = text
+            self.start = start
+            self.end = end
+
+    class _FakeInfo:
+        duration = 42.5
+
+    class _FakeModel:
+        def transcribe(self, audio_path: str):
+            return iter(
+                [
+                    _FakeSegment("first segment", 0.0, 2.0),
+                    _FakeSegment("second segment", 2.0, 4.5),
+                ]
+            ), _FakeInfo()
+
+    with patch(
+        "app.services.transcription._get_local_model", return_value=_FakeModel()
+    ):
+        result = transcribe(audio)
+
+    assert result.duration_seconds == 42.5
+    assert [(s.text, s.start, s.end) for s in result.segments] == [
+        ("first segment", 0.0, 2.0),
+        ("second segment", 2.0, 4.5),
+    ]
+
+
+def test_transcribe_local_wraps_model_load_errors(tmp_path, monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "local")
+    get_settings.cache_clear()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"wav")
+
+    def boom(model_size: str) -> None:
+        raise RuntimeError("model download failed")
+
+    with (
+        patch("app.services.transcription._get_local_model", side_effect=boom),
+        pytest.raises(TranscriptionError, match="Local Whisper model load failed"),
+    ):
+        transcribe(audio)
+
+
+def test_transcribe_local_wraps_transcription_errors(tmp_path, monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "local")
+    get_settings.cache_clear()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"wav")
+
+    class _ExplodingModel:
+        def transcribe(self, audio_path: str):
+            raise RuntimeError("audio decode failed")
+
+    with (
+        patch(
+            "app.services.transcription._get_local_model",
+            return_value=_ExplodingModel(),
+        ),
+        pytest.raises(TranscriptionError, match="Local Whisper transcription failed"),
+    ):
+        transcribe(audio)
+
+
 def test_transcribe_requires_api_key(tmp_path, monkeypatch) -> None:
     from app.core.config import get_settings
 

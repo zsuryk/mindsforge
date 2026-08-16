@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     MINDS_BUILDER_API_KEY: str = ""
     MINDS_AGENT_ID: str = ""
     GROQ_API_KEY: str = ""
+    TRANSCRIPTION_PROVIDER: str = "groq"
+    WHISPER_MODEL: str = "small"
     FFMPEG_BIN: str = "ffmpeg"
     PROCESS_JOBS_ON_SUBMIT: bool = True
     AB_TEST_INTERVAL_SECONDS: int = 60

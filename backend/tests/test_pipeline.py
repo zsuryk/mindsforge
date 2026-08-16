@@ -186,6 +186,66 @@ def test_stage_failure_marks_job_failed_and_stops_pipeline(
     assert job["duration_seconds"] is None
 
 
+def test_local_provider_job_completes_with_faster_whisper(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    _enable_pipeline(monkeypatch)
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "local")
+    _stub_minds(monkeypatch)
+    raw = tmp_path / "raw" / "video.mp4"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(b"fake media bytes")
+    monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
+    monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
+    monkeypatch.setattr(
+        media, "cut_clip", lambda source, dest, start, end: dest.write_bytes(b"clip") or dest
+    )
+    monkeypatch.setattr(
+        media,
+        "extract_frame_at_timestamp",
+        lambda source, dest, timestamp: dest.write_bytes(b"png") or dest,
+    )
+
+    class _FakeSegment:
+        def __init__(self, text: str, start: float, end: float) -> None:
+            self.text = text
+            self.start = start
+            self.end = end
+
+    class _FakeInfo:
+        duration = 30.0
+
+    class _FakeModel:
+        def transcribe(self, audio_path: str):
+            return iter(
+                [
+                    _FakeSegment("hello world.", 0.0, 1.5),
+                    _FakeSegment("this is a test.", 1.5, 3.0),
+                ]
+            ), _FakeInfo()
+
+    monkeypatch.setattr(
+        transcription, "_get_local_model", lambda model_size: _FakeModel()
+    )
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/local.mp4"},
+    )
+    assert res.status_code == 202
+    job_id = res.json()["job_id"]
+
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "COMPLETED"
+    assert job["duration_seconds"] == 30.0
+    assert job["transcript_segments"] == [
+        {"text": "hello world.", "start": 0.0, "end": 1.5},
+        {"text": "this is a test.", "start": 1.5, "end": 3.0},
+    ]
+
+
 def test_missing_groq_api_key_fails_job_with_descriptive_message(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,

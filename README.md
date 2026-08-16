@@ -27,8 +27,7 @@ Everything renders into real assets (thumbnail PNGs, `captions.srt`, `chapters.t
 - **uv** — Python package manager
 - **Node.js 20+** (LTS recommended)
 - **FFmpeg 6+** (in system PATH)
-- **Three API keys** — jobs are fail-closed without them: `GROQ_API_KEY` (transcription), `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory). Grab a free Groq key at https://console.groq.com; contact for the Minds keys or generate one.
-- You may need to use a VPN if you are located in a region unsupported by Groq.
+- **API keys** — the Mind is fail-closed without `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory); contact for the Minds keys or generate one. Transcription runs on Groq by default (`GROQ_API_KEY` — free key at https://console.groq.com), or fully locally with `TRANSCRIPTION_PROVIDER=local` if you're in a region Groq doesn't support — no VPN needed.
 
 ## Install the tools
 
@@ -64,7 +63,7 @@ In the `backend` folder:
 cp .env.example .env     # Windows: Copy-Item .env.example .env
 ```
 
-Fill in the three keys in `.env`. Everything else has sane defaults.
+Fill in the Mind keys (and `GROQ_API_KEY` unless using `TRANSCRIPTION_PROVIDER=local`) in `.env`. Everything else has sane defaults.
 
 ## Run
 
@@ -104,7 +103,7 @@ Open `http://localhost:3000`.
 | Port 8000 already in use | Quit the other process, or run with `PORT=8001` and point the frontend's `NEXT_PUBLIC_API_URL` at it. |
 | Video fails to download | Some hosts (e.g. YouTube) block automated downloads — use a direct `.mp4` URL instead. |
 | Red status light in the header | Backend isn't running — start it (see **Run**). |
-| Groq transcription failed: Error code: 403 | Region unsupported by Groq — use a VPN |
+| Groq transcription failed: Error code: 403 | Region unsupported by Groq — set `TRANSCRIPTION_PROVIDER=local` in `backend/.env` to transcribe with local Whisper instead (first run downloads the model). |
 
 ---
 
