@@ -174,6 +174,60 @@ def test_message_mind_times_out_when_no_reply(
         minds._message_mind("agent-1", "prompt text")
 
 
+class _FakeClock:
+    """Deterministic clock: monotonic time advances only via sleep.
+
+    Lets a test simulate a slow Mind reply (e.g. 335s of wall time) without
+    actually sleeping, so the timeout boundary is exercised instantly.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def test_message_mind_accepts_reply_that_arrives_after_180s(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Mind replies asynchronously and can take minutes; a reply landing
+    after the (previously 180s) deadline must still be accepted, not reported
+    as a timeout. Replays the real latency observed against the Builder API:
+    prompt sent at t=0, prose read reply returned at t=335s."""
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(minds, "MESSAGE_REPLY_POLL_INTERVAL_SECONDS", 1.0)
+    clock = _FakeClock()
+    monkeypatch.setattr(minds.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(minds.time, "sleep", clock.sleep)
+    monkeypatch.setattr(minds, "_post", lambda path, payload: FakeResponse({}, 200))
+
+    prompt_fp = "0001786890817402_6514285c-47b1-4bba-8df2-347b"
+    reply_fp = "0001786891152829_d9179f39-763a-4c54-955b-b403"
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse([], 200)
+        if clock.now >= 335:
+            return FakeResponse(
+                [
+                    {"senderType": 0, "messageText": "real read", "fingerprint": reply_fp},
+                    {"senderType": 1, "messageText": "prompt text", "fingerprint": prompt_fp},
+                ],
+                200,
+            )
+        return FakeResponse(
+            [{"senderType": 1, "messageText": "prompt text", "fingerprint": prompt_fp}], 200
+        )
+
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    assert minds._message_mind("agent-1", "prompt text") == "real read"
+
+
 def test_ensure_conversation_treats_alias_exists_as_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

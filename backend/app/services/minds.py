@@ -21,7 +21,12 @@ HTTP_TIMEOUT_SECONDS = 30.0
 # replies asynchronously, so generation calls send a message then poll the
 # conversation history until a Mind reply arrives.
 MESSAGING_ALIAS = "mindsforge"
-MESSAGE_REPLY_TIMEOUT_SECONDS = 180.0
+# The Mind's reply latency is long-tailed (median ~90s, observed up to 380s+,
+# trending up as it engages with repeated prompts). The deadline must sit
+# above that tail; 180s was too tight and failed adaptations even though the
+# Mind eventually answered. Two-step flows (read + fill) need two round trips,
+# so a single prompt's budget is deliberately generous.
+MESSAGE_REPLY_TIMEOUT_SECONDS = 600.0
 MESSAGE_REPLY_POLL_INTERVAL_SECONDS = 2.0
 
 # Mind replies arrive as senderType 0 (human messages are senderType 1).
