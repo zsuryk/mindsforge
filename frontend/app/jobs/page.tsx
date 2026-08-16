@@ -91,15 +91,25 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold text-slate-100">Jobs</h1>
+      <header>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+          Studio
+        </p>
+        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-fg">
+          Jobs
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          Submit a long-form source and track it through the ingestion pipeline.
+        </p>
+      </header>
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-5"
+        className="space-y-4 rounded-xl border border-edge bg-card p-5"
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label htmlFor="source-url" className="text-sm font-medium text-slate-300">
+            <label htmlFor="source-url" className="text-sm font-medium text-muted">
               Source URL
             </label>
             <input
@@ -108,11 +118,11 @@ export default function JobsPage() {
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.target.value)}
               placeholder="https://youtube.com/watch?v=…"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
             />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="title" className="text-sm font-medium text-slate-300">
+            <label htmlFor="title" className="text-sm font-medium text-muted">
               Title
             </label>
             <input
@@ -121,7 +131,7 @@ export default function JobsPage() {
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Optional — defaults to URL or filename"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
             />
           </div>
         </div>
@@ -129,7 +139,7 @@ export default function JobsPage() {
         <div className="flex flex-wrap items-center gap-4">
           <label
             htmlFor="file"
-            className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300 hover:border-indigo-500"
+            className="flex cursor-pointer items-center gap-2 rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-muted transition-colors hover:border-accent"
           >
             <Upload className="h-4 w-4" />
             {file ? file.name : "Upload a media file"}
@@ -146,7 +156,7 @@ export default function JobsPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-indigo-500 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Submitting…" : "Submit job"}
           </button>
@@ -156,17 +166,17 @@ export default function JobsPage() {
       </form>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-slate-400">Submitted jobs</h2>
+        <h2 className="text-sm font-semibold text-fg">Submitted jobs</h2>
         {jobs.length === 0 ? (
-          <p className="text-sm text-slate-500">No jobs yet — submit your first source above.</p>
+          <p className="text-sm text-subtle">No jobs yet — submit your first source above.</p>
         ) : (
-          <ul className="divide-y divide-slate-800 rounded-xl border border-slate-800 bg-slate-900">
+          <ul className="divide-y divide-edge rounded-xl border border-edge bg-card">
             {jobs.map((job) => (
-              <li key={job.id} className="divide-y divide-slate-800">
+              <li key={job.id} className="divide-y divide-edge">
                 <div className="flex items-center justify-between gap-4 px-5 py-4">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-100">{job.title}</p>
-                    <p className="truncate text-xs text-slate-500">
+                    <p className="truncate text-sm font-medium text-fg">{job.title}</p>
+                    <p className="truncate text-xs text-subtle">
                       {job.source_url ?? job.file_path ?? "—"}
                     </p>
                     {job.status === "FAILED" && job.error_message && (
@@ -175,13 +185,13 @@ export default function JobsPage() {
                     {job.status === "TRANSCRIBING" &&
                       job.transcript_segments &&
                       job.transcript_segments.length > 0 && (
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-subtle">
                           {job.transcript_segments.length} segments ·{" "}
                           {job.duration_seconds?.toFixed(1)}s
                         </p>
                       )}
                     {job.status === "COMPLETED" && (
-                      <p className="mt-1 text-xs text-slate-500">Clips ready</p>
+                      <p className="mt-1 text-xs text-subtle">Clips ready</p>
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
@@ -193,7 +203,7 @@ export default function JobsPage() {
                         disabled={busyJobId === job.id}
                         aria-label="Retry job"
                         title="Retry"
-                        className="rounded-lg border border-slate-700 bg-slate-950 p-2 text-slate-300 transition-colors hover:border-indigo-500 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-lg border border-edge-strong bg-background p-2 text-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <RotateCcw className="h-4 w-4" />
                       </button>
@@ -204,7 +214,7 @@ export default function JobsPage() {
                       disabled={busyJobId === job.id}
                       aria-label="Delete job"
                       title="Delete"
-                      className="rounded-lg border border-slate-700 bg-slate-950 p-2 text-slate-300 transition-colors hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg border border-edge-strong bg-background p-2 text-muted transition-colors hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

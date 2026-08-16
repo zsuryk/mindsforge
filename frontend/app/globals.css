@@ -1,3 +1,105 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 28% 5%;
+    --surface: 240 24% 7%;
+    --card: 240 20% 10%;
+    --elevated: 240 16% 14%;
+    --edge: 240 14% 17%;
+    --edge-strong: 240 12% 26%;
+    --fg: 240 36% 96%;
+    --muted: 240 12% 64%;
+    --subtle: 240 10% 48%;
+    --accent: 24 94% 53%;
+    --accent-hover: 24 96% 61%;
+    --accent-fg: 24 60% 10%;
+    --mind: 262 84% 68%;
+    --mind-fg: 262 80% 96%;
+    --insight: 43 96% 58%;
+
+    color-scheme: dark;
+  }
+
+  * {
+    border-color: hsl(var(--edge));
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--fg));
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  ::selection {
+    background-color: hsl(var(--accent) / 0.35);
+    color: hsl(var(--fg));
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--accent));
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--edge-strong)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--edge-strong));
+    border-radius: 999px;
+    border: 2px solid hsl(var(--background));
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .bg-atmosphere {
+    background-image:
+      radial-gradient(
+        55% 40% at 12% -5%,
+        hsl(var(--accent) / 0.08),
+        transparent 62%
+      ),
+      radial-gradient(
+        50% 42% at 88% -5%,
+        hsl(var(--mind) / 0.1),
+        transparent 60%
+      );
+  }
+
+  .text-gradient {
+    background-image: linear-gradient(
+      110deg,
+      hsl(var(--accent)) 0%,
+      hsl(var(--accent-hover)) 55%,
+      hsl(var(--mind)) 110%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}

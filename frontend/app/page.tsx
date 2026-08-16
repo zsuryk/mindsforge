@@ -21,10 +21,12 @@ function MetricCard({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-      <Icon className="mb-3 h-5 w-5 text-indigo-400" />
-      <p className="text-sm text-slate-400">{label}</p>
-      <p className="mt-1 text-3xl font-semibold text-slate-100">{value}</p>
+    <div className="group rounded-xl border border-edge bg-card p-5 transition-colors hover:border-edge-strong">
+      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-edge bg-elevated">
+        <Icon className="h-5 w-5 text-accent" />
+      </div>
+      <p className="text-sm text-muted">{label}</p>
+      <p className="mt-1 font-display text-3xl font-semibold text-fg">{value}</p>
     </div>
   );
 }
@@ -100,29 +102,36 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-100">MindsForge Studio</h1>
-        <p className="text-sm text-slate-500">
-          Turn long-form content into high-converting short clips.
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+          MindsForge Studio
+        </p>
+        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-fg">
+          Turn long-form content into{" "}
+          <span className="text-gradient">high-converting clips</span>
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          Paste a source, and the Mind finds the golden moments, adapts them for every
+          platform, and tests them autonomously.
         </p>
       </header>
 
       <form
         onSubmit={handleSubmit}
-        className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3"
+        className="flex items-center gap-3 rounded-xl border border-edge bg-card p-3 transition-colors focus-within:border-accent/50"
       >
-        <Link2 className="h-5 w-5 shrink-0 text-indigo-400" />
+        <Link2 className="h-5 w-5 shrink-0 text-accent" />
         <input
           type="text"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder="Paste a video URL — press Enter to process it"
           aria-label="Video URL"
-          className="min-w-0 flex-1 bg-transparent text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-subtle focus:outline-none"
         />
         <button
           type="submit"
           disabled={submitting}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Zap className="h-4 w-4" />
           {submitting ? "Starting…" : "Process"}
@@ -142,30 +151,30 @@ export default function DashboardPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-slate-400">Recent jobs</h2>
+        <h2 className="text-sm font-semibold text-fg">Recent jobs</h2>
         {recentJobs.length === 0 ? (
-          <p className="rounded-xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-500">
+          <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
             No jobs yet — paste a URL above to create your first clips.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+          <div className="overflow-hidden rounded-xl border border-edge bg-card">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
+              <thead className="border-b border-edge text-xs uppercase tracking-wider text-subtle">
                 <tr>
                   <th className="px-5 py-3 font-medium">Job</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="hidden px-5 py-3 font-medium sm:table-cell">Created</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-edge">
                 {recentJobs.map((job) => (
-                  <tr key={job.id} className="transition-colors hover:bg-slate-950/50">
+                  <tr key={job.id} className="transition-colors hover:bg-elevated/50">
                     <td className="px-5 py-3">
                       <Link href="/jobs" className="block">
-                        <p className="truncate font-medium text-slate-100 hover:text-indigo-300">
+                        <p className="truncate font-medium text-fg hover:text-accent">
                           {job.title}
                         </p>
-                        <p className="truncate text-xs text-slate-500">
+                        <p className="truncate text-xs text-subtle">
                           {job.source_url ?? job.file_path ?? "—"}
                         </p>
                       </Link>
@@ -173,7 +182,7 @@ export default function DashboardPage() {
                     <td className="px-5 py-3">
                       <StatusBadge status={job.status} animated />
                     </td>
-                    <td className="hidden px-5 py-3 text-xs text-slate-500 sm:table-cell">
+                    <td className="hidden px-5 py-3 text-xs text-subtle sm:table-cell">
                       {formatTimestamp(job.created_at)}
                     </td>
                   </tr>

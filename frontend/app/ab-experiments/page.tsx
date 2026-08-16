@@ -63,12 +63,14 @@ export default function AbExperimentsPage() {
     <div className="space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
-            <BarChart3 className="h-5 w-5 text-indigo-400" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-edge bg-card">
+            <BarChart3 className="h-5 w-5 text-accent" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-slate-100">A/B Experiments</h1>
-            <p className="text-xs text-slate-500">
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">
+              A/B Experiments
+            </h1>
+            <p className="text-xs text-subtle">
               Variants run until {formatViews(viewThreshold)}+ cumulative views, then the
               winner is written to memory.
             </p>
@@ -78,7 +80,7 @@ export default function AbExperimentsPage() {
           type="button"
           onClick={load}
           disabled={refreshing}
-          className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center gap-2 rounded-lg border border-edge-strong bg-card px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           {refreshing ? "Refreshing…" : "Refresh"}
@@ -92,16 +94,15 @@ export default function AbExperimentsPage() {
       )}
 
       {experiments === null ? (
-        !error && <p className="text-sm text-slate-500">Loading experiments…</p>
+        !error && <p className="text-sm text-subtle">Loading experiments…</p>
       ) : (
         <>
           <section className="space-y-4">
-            <h2 className="text-sm font-medium text-slate-400">
-              Active tests{" "}
-              <span className="text-slate-600">({active.length})</span>
+            <h2 className="text-sm font-semibold text-fg">
+              Active tests <span className="text-subtle">({active.length})</span>
             </h2>
             {active.length === 0 ? (
-              <p className="rounded-xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-500">
+              <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
                 No active tests — launch an A/B test from the clip studio.
               </p>
             ) : (
@@ -118,12 +119,11 @@ export default function AbExperimentsPage() {
           </section>
 
           <section className="space-y-4">
-            <h2 className="text-sm font-medium text-slate-400">
-              Concluded{" "}
-              <span className="text-slate-600">({concluded.length})</span>
+            <h2 className="text-sm font-semibold text-fg">
+              Concluded <span className="text-subtle">({concluded.length})</span>
             </h2>
             {concluded.length === 0 ? (
-              <p className="rounded-xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-500">
+              <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
                 No concluded tests yet — concluded insights land here and in the
                 Memory Inspector.
               </p>
@@ -138,9 +138,8 @@ export default function AbExperimentsPage() {
 
           {failed.length > 0 && (
             <section className="space-y-4">
-              <h2 className="text-sm font-medium text-slate-400">
-                Failed{" "}
-                <span className="text-slate-600">({failed.length})</span>
+              <h2 className="text-sm font-semibold text-fg">
+                Failed <span className="text-subtle">({failed.length})</span>
               </h2>
               <div className="space-y-4">
                 {failed.map((experiment) => (
@@ -166,17 +165,17 @@ function CtrChart({ variants, barColor }: { variants: AbVariant[]; barColor: str
     <div className="h-48">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
-          <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-          <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} stroke="#334155" />
-          <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} stroke="#334155" unit="%" />
+          <CartesianGrid stroke="#262633" strokeDasharray="3 3" />
+          <XAxis dataKey="name" tick={{ fill: "#9A9AA8", fontSize: 11 }} stroke="#35353F" />
+          <YAxis tick={{ fill: "#9A9AA8", fontSize: 11 }} stroke="#35353F" unit="%" />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#0f172a",
-              border: "1px solid #334155",
+              backgroundColor: "#13131F",
+              border: "1px solid #35353F",
               borderRadius: 8,
               fontSize: 12,
             }}
-            labelStyle={{ color: "#e2e8f0" }}
+            labelStyle={{ color: "#F2F2F8" }}
             formatter={(value: number) => [`${value.toFixed(2)}%`, "CTR"]}
             labelFormatter={(_: string, payload) =>
               payload && payload[0] ? payload[0].payload.fullTitle : ""
@@ -204,21 +203,21 @@ function ActiveExperimentCard({
   );
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <div className="rounded-xl border border-edge bg-card p-5">
       <div className="mb-4 flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-slate-100">{experiment.clip_title}</p>
-          <p className="text-xs text-slate-500">
+          <p className="text-sm font-semibold text-fg">{experiment.clip_title}</p>
+          <p className="text-xs text-subtle">
             {platformLabel(experiment.platform)} · {experiment.variants.length} variants
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <span className="flex items-center gap-1.5 rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-300">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400" />
+          <span className="flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-hover" />
             ACTIVE
           </span>
           {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL && (
-            <span className="rounded-full border border-slate-600 bg-slate-800/60 px-2.5 py-1 text-xs font-medium text-slate-300">
+            <span className="rounded-full border border-edge-strong bg-elevated/60 px-2.5 py-1 text-xs font-medium text-muted">
               thumbnail variants
             </span>
           )}
@@ -241,25 +240,25 @@ function ActiveExperimentCard({
 
       <div className="mt-4 space-y-4">
         <div>
-          <div className="mb-1 flex justify-between text-xs text-slate-500">
+          <div className="mb-1 flex justify-between text-xs text-subtle">
             <span>Cumulative views</span>
             <span>
               {formatViews(totalViews)} / {formatViews(viewThreshold)}
             </span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+          <div className="h-1.5 overflow-hidden rounded-full bg-elevated">
             <div
-              className="h-full rounded-full bg-indigo-500 transition-all"
+              className="h-full rounded-full bg-accent transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             CTR comparison
           </p>
-          <CtrChart variants={experiment.variants} barColor="#818cf8" />
+          <CtrChart variants={experiment.variants} barColor="#F97316" />
         </div>
       </div>
     </div>
@@ -274,9 +273,7 @@ function VariantRow({
   leading?: boolean;
 }) {
   return (
-    <div
-      className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-3"
-    >
+    <div className="flex items-center gap-3 rounded-lg border border-edge bg-background p-3">
       {variant.thumbnail_url ? (
         <img
           src={mediaUrl(variant.thumbnail_url)}
@@ -284,13 +281,13 @@ function VariantRow({
           className="h-10 w-16 shrink-0 rounded-md object-cover"
         />
       ) : (
-        <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md bg-slate-800 text-xs text-slate-600">
+        <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md bg-elevated text-xs text-subtle">
           no thumb
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-slate-200">{variant.title}</p>
-        <p className="text-xs text-slate-500">
+        <p className="truncate text-sm text-fg">{variant.title}</p>
+        <p className="text-xs text-subtle">
           {formatViews(variant.views)} views · {variant.ctr.toFixed(2)}% CTR
         </p>
       </div>
@@ -305,7 +302,7 @@ function VariantRow({
 
 function FailedExperimentCard({ experiment }: { experiment: AbExperiment }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-red-500/30 bg-slate-900">
+    <div className="overflow-hidden rounded-xl border border-red-500/30 bg-card">
       <div className="flex items-start gap-3 border-b border-red-500/20 bg-red-500/10 p-5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/20">
           <FlaskConical className="h-5 w-5 text-red-300" />
@@ -315,7 +312,7 @@ function FailedExperimentCard({ experiment }: { experiment: AbExperiment }) {
             Failed · {platformLabel(experiment.platform)} ·{" "}
             {experiment.clip_title}
           </p>
-          <p className="mt-1 text-sm text-slate-200">
+          <p className="mt-1 text-sm text-fg">
             {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL
               ? "Thumbnail variants"
               : "Title variants"}{" "}
@@ -329,7 +326,7 @@ function FailedExperimentCard({ experiment }: { experiment: AbExperiment }) {
             {experiment.error_message}
           </div>
         ) : (
-          <p className="text-sm text-slate-500">No error message recorded.</p>
+          <p className="text-sm text-subtle">No error message recorded.</p>
         )}
         <div className="space-y-2">
           {experiment.variants.map((variant) => (
@@ -347,7 +344,7 @@ function ConcludedExperimentCard({ experiment }: { experiment: AbExperiment }) {
   );
 
   return (
-    <div className="overflow-hidden rounded-xl border border-emerald-500/30 bg-slate-900">
+    <div className="overflow-hidden rounded-xl border border-emerald-500/30 bg-card">
       <div className="flex items-start gap-3 border-b border-emerald-500/20 bg-emerald-500/10 p-5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
           <Trophy className="h-5 w-5 text-emerald-300" />
@@ -357,11 +354,11 @@ function ConcludedExperimentCard({ experiment }: { experiment: AbExperiment }) {
             Winner · {platformLabel(experiment.platform)} ·{" "}
             {experiment.clip_title}
           </p>
-          <p className="mt-1 text-lg font-semibold text-slate-100">
+          <p className="mt-1 text-lg font-semibold text-fg">
             {winner?.title ?? "No winner recorded"}
           </p>
           {winner && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted">
               {formatViews(winner.views)} views · {winner.ctr.toFixed(2)}% CTR
             </p>
           )}
@@ -370,8 +367,8 @@ function ConcludedExperimentCard({ experiment }: { experiment: AbExperiment }) {
 
       <div className="space-y-4 p-5">
         {experiment.learned_insight && (
-          <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm leading-relaxed text-slate-200">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-amber-300">
+          <div className="rounded-lg border border-edge bg-background p-4 text-sm leading-relaxed text-fg">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-insight">
               Learned insight — written to memory
             </span>
             {experiment.learned_insight}
@@ -379,13 +376,13 @@ function ConcludedExperimentCard({ experiment }: { experiment: AbExperiment }) {
         )}
 
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             CTR comparison
           </p>
           <CtrChart variants={experiment.variants} barColor="#10b981" />
         </div>
 
-        <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        <p className="flex items-center gap-1.5 text-xs text-subtle">
           <FlaskConical className="h-3 w-3" />
           Concluded after{" "}
           {formatViews(

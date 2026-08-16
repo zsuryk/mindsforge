@@ -19,7 +19,7 @@ const POLL_INTERVAL_MS = 1500;
 
 const STATUS_STYLE: Record<string, string> = {
   PENDING: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-  GENERATING: "border-indigo-500/40 bg-indigo-500/10 text-indigo-300",
+  GENERATING: "border-accent/40 bg-accent/10 text-accent",
   READY: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   FAILED: "border-red-500/30 bg-red-500/10 text-red-300",
 };
@@ -114,7 +114,7 @@ function TagChips({ tags }: { tags: string[] }) {
       {tags.map((tag) => (
         <span
           key={tag}
-          className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs text-slate-200"
+          className="rounded-full border border-edge-strong bg-elevated px-2.5 py-0.5 text-xs text-fg"
         >
           {tag}
         </span>
@@ -145,16 +145,16 @@ function CopyBlock({
   };
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+    <div className="rounded-lg border border-edge bg-background p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">
           {label}
         </p>
         <button
           type="button"
           onClick={handleCopy}
           aria-label={`Copy ${label}`}
-          className="flex items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:border-indigo-500 hover:text-indigo-300"
+          className="flex items-center gap-1 rounded-md border border-edge-strong px-2 py-1 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
         >
           {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <ClipboardCopy className="h-3 w-3" />}
           {copied ? "Copied" : "Copy"}
@@ -163,7 +163,7 @@ function CopyBlock({
       {children ? (
         children
       ) : (
-        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-slate-200">
+        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-fg">
           {lines.join("\n")}
         </pre>
       )}
@@ -195,7 +195,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-        STATUS_STYLE[status] ?? "border-slate-700 bg-slate-900 text-slate-300"
+        STATUS_STYLE[status] ?? "border-edge-strong bg-card text-muted"
       }`}
     >
       {status === "GENERATING" && (
@@ -220,16 +220,16 @@ function AssetGrid({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {variants.length === 0 ? (
-          <p className="text-sm text-slate-500">No thumbnails rendered for this surface.</p>
+          <p className="text-sm text-subtle">No thumbnails rendered for this surface.</p>
         ) : (
           variants.map((variant) => (
-            <figure key={variant.id} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+            <figure key={variant.id} className="overflow-hidden rounded-lg border border-edge bg-background">
               <img
                 src={mediaUrl(variant.url)}
                 alt={`Thumbnail: ${variant.overlay_text || "variant"}`}
                 className="aspect-video w-full object-cover"
               />
-              <figcaption className="truncate px-2 py-1.5 text-xs text-slate-400">
+              <figcaption className="truncate px-2 py-1.5 text-xs text-muted">
                 {variant.overlay_text || variant.id}
               </figcaption>
             </figure>
@@ -241,7 +241,7 @@ function AssetGrid({
           <a
             href={mediaUrl(assets.captions_url)}
             download
-            className="flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 hover:border-indigo-500 hover:text-indigo-300"
+            className="flex items-center gap-1.5 rounded-md border border-edge-strong bg-background px-3 py-1.5 text-xs text-fg transition-colors hover:border-accent hover:text-accent"
           >
             <Download className="h-3.5 w-3.5" />
             captions.srt
@@ -251,7 +251,7 @@ function AssetGrid({
           <a
             href={mediaUrl(assets.chapters_url)}
             download
-            className="flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 hover:border-indigo-500 hover:text-indigo-300"
+            className="flex items-center gap-1.5 rounded-md border border-edge-strong bg-background px-3 py-1.5 text-xs text-fg transition-colors hover:border-accent hover:text-accent"
           >
             <Download className="h-3.5 w-3.5" />
             chapters.txt
@@ -261,7 +261,7 @@ function AssetGrid({
           <button
             type="button"
             onClick={() => onTest(variants)}
-            className="ml-auto flex items-center gap-1.5 rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-400"
+            className="ml-auto flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
           >
             <FlaskConical className="h-3.5 w-3.5" />
             Run Test &amp; Compare
@@ -345,21 +345,21 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
   const isBusy = adaptation?.status === "PENDING" || adaptation?.status === "GENERATING";
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <div className="rounded-xl border border-edge bg-card p-5">
       <div className="mb-4 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
           Adaptation studio
         </h2>
         <button
           type="button"
           onClick={load}
-          className="text-xs text-slate-500 hover:text-slate-200"
+          className="text-xs text-subtle transition-colors hover:text-fg"
         >
           Refresh
         </button>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1">
+      <div className="mb-4 flex flex-wrap gap-1 rounded-lg border border-edge bg-background p-1">
         {ADAPTATION_TARGETS.map((target) => (
           <button
             key={targetKey(target)}
@@ -367,8 +367,8 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
             aria-selected={activeTarget === target}
             className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
               activeTarget === target
-                ? "bg-indigo-500 text-white"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted hover:text-fg"
             }`}
           >
             {target.label}
@@ -385,7 +385,7 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {adaptation === null ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-subtle">
               No adaptation generated for {activeTarget.label} yet.
             </p>
           ) : (
@@ -401,7 +401,7 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
           type="button"
           onClick={handleGenerate}
           disabled={isBusy}
-          className="flex items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Wand2 className="h-4 w-4" />
           {isBusy
@@ -429,7 +429,7 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
           )}
 
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
               Assets
             </p>
             {adaptation.assets ? (
@@ -439,12 +439,12 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
                 onTest={handleTest}
               />
             ) : (
-              <p className="text-sm text-slate-500">No assets rendered yet.</p>
+              <p className="text-sm text-subtle">No assets rendered yet.</p>
             )}
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
               Publish checklist
             </p>
             <ol className="space-y-1.5">
@@ -452,14 +452,14 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
                 const id = `${targetKey(activeTarget)}:${index}`;
                 return (
                   <li key={id}>
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-sm text-slate-200 hover:border-slate-700">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-edge bg-background p-2.5 text-sm text-fg transition-colors hover:border-edge-strong">
                       <input
                         type="checkbox"
                         checked={checked[id] ?? false}
                         onChange={() =>
                           setChecked((current) => ({ ...current, [id]: !current[id] }))
                         }
-                        className="accent-indigo-500"
+                        className="accent-accent"
                       />
                       {step}
                     </label>

@@ -29,15 +29,15 @@ export default function ViralityGauge({ score }: { score: number | null }) {
         data={[{ name: "virality", value, fill: color }]}
       >
         <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-        <RadialBar dataKey="value" cornerRadius={10} background={{ fill: "#1e293b" }} />
+        <RadialBar dataKey="value" cornerRadius={10} background={{ fill: "#262633" }} />
       </RadialBarChart>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {score === null ? (
-          <span className="text-2xl text-slate-500">—</span>
+          <span className="text-2xl text-subtle">—</span>
         ) : (
-          <span className="text-4xl font-bold text-slate-100">{score}</span>
+          <span className="font-display text-4xl font-semibold text-fg">{score}</span>
         )}
-        <span className="text-[10px] font-medium uppercase tracking-widest text-slate-400">
+        <span className="text-[10px] font-medium uppercase tracking-widest text-muted">
           virality
         </span>
       </div>

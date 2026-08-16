@@ -63,7 +63,7 @@ function JsonNode({
             type="button"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
-            className="mt-0.5 mr-1 text-slate-500 hover:text-slate-300"
+            className="mt-0.5 mr-1 text-muted hover:text-fg"
           >
             {open ? (
               <ChevronDown className="h-3.5 w-3.5" />
@@ -77,17 +77,17 @@ function JsonNode({
         <span className="break-all font-mono text-sm leading-6">
           {name !== null && (
             <>
-              <span className="text-indigo-300">{JSON.stringify(name)}</span>
-              <span className="text-slate-500">: </span>
+              <span className="text-mind">{JSON.stringify(name)}</span>
+              <span className="text-muted">: </span>
             </>
           )}
           {isExpandable(value) ? (
             <>
-              <span className="text-slate-500">{Array.isArray(value) ? "[" : "{"}</span>
-              {!isEmpty(value) && <span className="text-slate-400">…</span>}
-              <span className="text-slate-500">{Array.isArray(value) ? "]" : "}"}</span>
+              <span className="text-muted">{Array.isArray(value) ? "[" : "{"}</span>
+              {!isEmpty(value) && <span className="text-subtle">…</span>}
+              <span className="text-muted">{Array.isArray(value) ? "]" : "}"}</span>
               {!isEmpty(value) && (
-                <span className="ml-2 text-xs text-slate-600">
+                <span className="ml-2 text-xs text-subtle">
                   {Array.isArray(value)
                     ? `${value.length} item${value.length === 1 ? "" : "s"}`
                     : `${Object.keys(value).length} key${Object.keys(value).length === 1 ? "" : "s"}`}
@@ -100,7 +100,7 @@ function JsonNode({
         </span>
       </div>
       {expandable && open && !isEmpty(value) && (
-        <div className="border-l border-slate-800/70 ml-[1.375rem] pl-2">
+        <div className="ml-[1.375rem] border-l border-edge/70 pl-2">
           {entriesOf(value).map(([childName, childValue], index) => (
             <JsonNode
               key={childName ?? index}
@@ -117,7 +117,7 @@ function JsonNode({
 
 export function JsonTree({ data }: { data: unknown }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4">
+    <div className="overflow-x-auto rounded-xl border border-edge bg-background p-4">
       <JsonNode name={null} value={data as JsonValue} depth={0} />
     </div>
   );

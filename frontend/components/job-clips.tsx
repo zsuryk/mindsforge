@@ -29,11 +29,11 @@ export default function JobClips({ jobId }: { jobId: string }) {
   }, [jobId]);
 
   if (clips === null) {
-    return <p className="px-5 pb-4 text-xs text-slate-500">Loading clips…</p>;
+    return <p className="px-5 pb-4 text-xs text-subtle">Loading clips…</p>;
   }
 
   if (clips.length === 0) {
-    return <p className="px-5 pb-4 text-xs text-slate-500">No clips extracted.</p>;
+    return <p className="px-5 pb-4 text-xs text-subtle">No clips extracted.</p>;
   }
 
   return (
@@ -41,7 +41,7 @@ export default function JobClips({ jobId }: { jobId: string }) {
       {clips.map((clip) => (
         <article
           key={clip.id}
-          className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950"
+          className="overflow-hidden rounded-lg border border-edge bg-background"
         >
           <video
             controls
@@ -51,18 +51,18 @@ export default function JobClips({ jobId }: { jobId: string }) {
             className="aspect-video w-full bg-black"
           />
           <div className="space-y-1 p-3">
-            <p className="truncate text-sm font-medium text-slate-100" title={clip.title}>
+            <p className="truncate text-sm font-medium text-fg" title={clip.title}>
               {clip.title}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-subtle">
               {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
             </p>
-            <p className="line-clamp-2 text-xs text-slate-400">{clip.transcript_text}</p>
+            <p className="line-clamp-2 text-xs text-muted">{clip.transcript_text}</p>
             <a
               href={`/clips/${clip.id}`}
-              className="mt-2 inline-flex items-center gap-1 rounded-md bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700"
+              className="mt-2 inline-flex items-center gap-1 rounded-md bg-elevated px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-edge-strong"
             >
-              <FlaskConical className="h-3 w-3 text-indigo-400" />
+              <FlaskConical className="h-3 w-3 text-accent" />
               Open in studio
             </a>
           </div>

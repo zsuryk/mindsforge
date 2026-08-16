@@ -117,22 +117,22 @@ export default function LaunchAbTestModal({
       role="dialog"
       aria-modal="true"
       aria-label="Launch A/B test"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"
+        className="w-full max-w-md rounded-xl border border-edge-strong bg-card p-6 shadow-2xl shadow-black/40"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between">
           <div className="flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-indigo-400" />
-            <h2 className="text-lg font-semibold text-slate-100">Launch A/B Test</h2>
+            <FlaskConical className="h-5 w-5 text-accent" />
+            <h2 className="font-display text-lg font-semibold text-fg">Launch A/B Test</h2>
           </div>
           <button
             onClick={onClose}
             aria-label="Close modal"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            className="rounded-md p-1 text-muted transition-colors hover:bg-elevated hover:text-fg"
           >
             <X className="h-4 w-4" />
           </button>
@@ -141,7 +141,7 @@ export default function LaunchAbTestModal({
         {launchedId === null ? (
           <>
             <label
-              className="mb-1 block text-sm font-medium text-slate-300"
+              className="mb-1 block text-sm font-medium text-muted"
               htmlFor="ab-platform"
             >
               Platform
@@ -150,7 +150,7 @@ export default function LaunchAbTestModal({
               id="ab-platform"
               value={platform}
               onChange={(event) => setPlatform(event.target.value)}
-              className="mb-4 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+              className="mb-4 w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
             >
               {EXPERIMENT_PLATFORMS.map((option) => (
                 <option key={option.key} value={option.key}>
@@ -160,15 +160,15 @@ export default function LaunchAbTestModal({
             </select>
 
             {thumbnailVariants.length >= 2 && (
-              <div className="mb-4 flex gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1">
+              <div className="mb-4 flex gap-1 rounded-lg border border-edge bg-background p-1">
                 <button
                   type="button"
                   onClick={() => setKind(AbExperimentVariantKind.TITLE)}
                   aria-selected={!thumbnailMode}
                   className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
                     !thumbnailMode
-                      ? "bg-indigo-500 text-white"
-                      : "text-slate-400 hover:text-slate-200"
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted hover:text-fg"
                   }`}
                 >
                   Title variants
@@ -179,8 +179,8 @@ export default function LaunchAbTestModal({
                   aria-selected={thumbnailMode}
                   className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
                     thumbnailMode
-                      ? "bg-indigo-500 text-white"
-                      : "text-slate-400 hover:text-slate-200"
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted hover:text-fg"
                   }`}
                 >
                   Thumbnail variants
@@ -190,23 +190,23 @@ export default function LaunchAbTestModal({
 
             {thumbnailMode ? (
               <fieldset className="mb-4">
-                <legend className="mb-2 text-sm font-medium text-slate-300">
+                <legend className="mb-2 text-sm font-medium text-muted">
                   Variants (rendered thumbnails)
                 </legend>
                 {usableThumbs.length === 0 ? (
-                  <p className="text-sm text-slate-500">No rendered thumbnails yet.</p>
+                  <p className="text-sm text-subtle">No rendered thumbnails yet.</p>
                 ) : (
                   <div className="space-y-2">
                     {usableThumbs.map((variant) => (
                       <label
                         key={variant.id}
-                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-sm text-slate-200 hover:border-slate-700"
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-edge bg-background p-2.5 text-sm text-fg transition-colors hover:border-edge-strong"
                       >
                         <input
                           type="checkbox"
                           checked={selectedThumbs.includes(variant.id)}
                           onChange={() => toggleThumb(variant.id)}
-                          className="accent-indigo-500"
+                          className="accent-accent"
                         />
                         <img
                           src={mediaUrl(variant.url)}
@@ -223,23 +223,23 @@ export default function LaunchAbTestModal({
               </fieldset>
             ) : (
               <fieldset className="mb-4">
-                <legend className="mb-2 text-sm font-medium text-slate-300">
+                <legend className="mb-2 text-sm font-medium text-muted">
                   Variants (titles)
                 </legend>
                 <div className="space-y-2">
                   {suggestedTitles.length === 0 ? (
-                    <p className="text-sm text-slate-500">No suggested titles yet.</p>
+                    <p className="text-sm text-subtle">No suggested titles yet.</p>
                   ) : (
                     suggestedTitles.map((title) => (
                       <label
                         key={title}
-                        className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200 hover:border-slate-700"
+                        className="flex cursor-pointer items-start gap-2 rounded-lg border border-edge bg-background p-3 text-sm text-fg transition-colors hover:border-edge-strong"
                       >
                         <input
                           type="checkbox"
                           checked={selected.includes(title)}
                           onChange={() => toggleTitle(title)}
-                          className="mt-0.5 accent-indigo-500"
+                          className="mt-0.5 accent-accent"
                         />
                         <span className="leading-snug">{title}</span>
                       </label>
@@ -252,7 +252,7 @@ export default function LaunchAbTestModal({
             <button
               onClick={handleLaunch}
               disabled={!canLaunch}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Rocket className="h-4 w-4" />
               {launching ? "Launching…" : "Launch"}
@@ -271,7 +271,7 @@ export default function LaunchAbTestModal({
             <Link
               href="/ab-experiments"
               onClick={onClose}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
             >
               <FlaskConical className="h-4 w-4" />
               Track it on the experiments page

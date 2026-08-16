@@ -72,15 +72,17 @@ export default function MemoryInspectorPage() {
     <div className="space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
-            <Brain className="h-5 w-5 text-indigo-400" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-edge bg-card">
+            <Brain className="h-5 w-5 text-mind" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-slate-100">Memory Inspector</h1>
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">
+              Memory Inspector
+            </h1>
             {agentMemory && (
-              <p className="text-xs text-slate-500">
-                Agent{" "}
-                <span className="rounded-md border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-slate-300">
+              <p className="text-xs text-subtle">
+                Mind{" "}
+                <span className="rounded-md border border-edge bg-elevated px-1.5 py-0.5 font-mono text-muted">
                   {agentMemory.agent_id}
                 </span>
               </p>
@@ -91,7 +93,7 @@ export default function MemoryInspectorPage() {
           type="button"
           onClick={load}
           disabled={refreshing}
-          className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center gap-2 rounded-lg border border-edge-strong bg-card px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           {refreshing ? "Refreshing…" : "Refresh"}
@@ -105,14 +107,14 @@ export default function MemoryInspectorPage() {
       )}
 
       {agentMemory === null ? (
-        !error && <p className="text-sm text-slate-500">Loading memory…</p>
+        !error && <p className="text-sm text-subtle">Loading memory…</p>
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-6">
             <section className="space-y-3">
-              <h2 className="text-sm font-medium text-slate-400">Learned rules</h2>
+              <h2 className="text-sm font-semibold text-fg">Learned rules</h2>
               {insights.length === 0 ? (
-                <p className="rounded-xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-500">
+                <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
                   No learned rules yet — run A/B tests and write insights to see cards here.
                 </p>
               ) : (
@@ -120,27 +122,27 @@ export default function MemoryInspectorPage() {
                   {insights.map((insight, index) => (
                     <div
                       key={`${insight.title}-${index}`}
-                      className="rounded-xl border border-slate-800 bg-slate-900 p-4"
+                      className="rounded-xl border border-edge bg-card p-4"
                     >
                       <div className="mb-2 flex items-center gap-2">
-                        <Lightbulb className="h-4 w-4 text-amber-300" />
-                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        <Lightbulb className="h-4 w-4 text-insight" />
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                           {insight.title}
                         </p>
                       </div>
-                      <p className="line-clamp-3 text-sm text-slate-200">{insight.detail}</p>
+                      <p className="line-clamp-3 text-sm text-fg">{insight.detail}</p>
                     </div>
                   ))}
                 </div>
               )}
             </section>
 
-            <section className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-              <h2 className="mb-3 text-sm font-medium text-slate-400">Write to memory</h2>
+            <section className="rounded-xl border border-edge bg-card p-5">
+              <h2 className="mb-3 text-sm font-semibold text-fg">Write to memory</h2>
               <form onSubmit={handleUpdate} className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <label htmlFor="memory-key" className="text-sm font-medium text-slate-300">
+                    <label htmlFor="memory-key" className="text-sm font-medium text-muted">
                       Key
                     </label>
                     <input
@@ -149,11 +151,11 @@ export default function MemoryInspectorPage() {
                       value={key}
                       onChange={(event) => setKey(event.target.value)}
                       placeholder="e.g. tiktok_best_pacing"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+                      className="w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label htmlFor="memory-value" className="text-sm font-medium text-slate-300">
+                    <label htmlFor="memory-value" className="text-sm font-medium text-muted">
                       Value
                     </label>
                     <input
@@ -162,25 +164,25 @@ export default function MemoryInspectorPage() {
                       value={value}
                       onChange={(event) => setValue(event.target.value)}
                       placeholder='JSON or text, e.g. {"ctr": 0.03}'
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+                      className="w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                     />
                   </div>
                 </div>
                 <button
                   type="submit"
                   disabled={updating || !key.trim()}
-                  className="flex items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <PencilLine className="h-4 w-4" />
                   {updating ? "Writing…" : "Write to memory"}
                 </button>
-                {updateMessage && <p className="text-sm text-slate-400">{updateMessage}</p>}
+                {updateMessage && <p className="text-sm text-muted">{updateMessage}</p>}
               </form>
             </section>
           </div>
 
           <section className="space-y-3">
-            <h2 className="text-sm font-medium text-slate-400">Raw context</h2>
+            <h2 className="text-sm font-semibold text-fg">Raw context</h2>
             <JsonTree data={agentMemory.memory} />
           </section>
         </div>
