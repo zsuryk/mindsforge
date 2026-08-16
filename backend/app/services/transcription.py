@@ -32,7 +32,13 @@ def _get_local_model(model_size: str) -> Any:
     if model is None:
         from faster_whisper import WhisperModel
 
-        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        settings = get_settings()
+        model = WhisperModel(
+            model_size,
+            device="cpu",
+            compute_type="int8",
+            use_auth_token=settings.HF_TOKEN or None,
+        )
         _local_models[model_size] = model
     return model
 

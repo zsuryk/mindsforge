@@ -54,6 +54,7 @@ def test_transcribe_maps_verbose_json_to_segments(tmp_path, monkeypatch) -> None
     from app.core.config import get_settings
 
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
     get_settings.cache_clear()
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"wav")
@@ -74,6 +75,7 @@ def test_transcribe_parses_segments_from_real_groq_response(
     from app.core.config import get_settings
 
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
     get_settings.cache_clear()
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"wav")
@@ -186,10 +188,43 @@ def test_transcribe_local_wraps_transcription_errors(tmp_path, monkeypatch) -> N
         transcribe(audio)
 
 
+def test_transcribe_local_passes_hf_token_to_model(tmp_path, monkeypatch) -> None:
+    import faster_whisper
+
+    from app.core.config import get_settings
+    from app.services import transcription
+
+    captured: dict = {}
+
+    class _FakeInfo:
+        duration = 0.0
+
+    class _FakeWhisperModel:
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+
+        def transcribe(self, audio_path: str):
+            return iter([]), _FakeInfo()
+
+    monkeypatch.setattr(faster_whisper, "WhisperModel", _FakeWhisperModel)
+    monkeypatch.setattr(transcription, "_local_models", {})
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "local")
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+    get_settings.cache_clear()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"wav")
+
+    with patch("app.services.transcription._get_local_model", wraps=transcription._get_local_model):
+        transcribe(audio)
+
+    assert captured["use_auth_token"] == "hf-test-token"
+
+
 def test_transcribe_requires_api_key(tmp_path, monkeypatch) -> None:
     from app.core.config import get_settings
 
     monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
     get_settings.cache_clear()
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"wav")
@@ -202,6 +237,7 @@ def test_transcribe_wraps_api_errors(tmp_path, monkeypatch) -> None:
     from app.core.config import get_settings
 
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
     get_settings.cache_clear()
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"wav")

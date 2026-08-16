@@ -260,6 +260,7 @@ def test_missing_groq_api_key_fails_job_with_descriptive_message(
     monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
     monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
     monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
     get_settings.cache_clear()
 
     res = test_client.post(
