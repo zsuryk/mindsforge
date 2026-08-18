@@ -4,8 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Brain, Lightbulb, PencilLine, RefreshCw } from "lucide-react";
 
 import { JsonTree } from "@/components/json-tree";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { AgentMemory, fetchAgentMemory, updateAgentMemory } from "@/lib/api";
 import { collectInsights } from "@/lib/insights";
+import { cn } from "@/lib/utils";
 
 function parseValueInput(raw: string): unknown {
   const trimmed = raw.trim();
@@ -69,120 +76,112 @@ export default function MemoryInspectorPage() {
   const insights = agentMemory ? collectInsights(agentMemory.memory) : [];
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-edge bg-card">
+        <div className="flex items-center gap-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border/40 bg-secondary/50">
             <Brain className="h-5 w-5 text-mind" />
           </div>
           <div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
               Memory Inspector
             </h1>
             {agentMemory && (
-              <p className="text-xs text-subtle">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Mind{" "}
-                <span className="rounded-md border border-edge bg-elevated px-1.5 py-0.5 font-mono text-muted">
+                <Badge variant="outline" className="ml-1 font-mono text-xs">
                   {agentMemory.agent_id}
-                </span>
+                </Badge>
               </p>
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={refreshing}
-          className="flex items-center gap-2 rounded-lg border border-edge-strong bg-card px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        <Button variant="outline" onClick={load} disabled={refreshing}>
+          <RefreshCw className={cn(refreshing && "animate-spin")} />
           {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
+        </Button>
       </header>
 
       {error && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {agentMemory === null ? (
-        !error && <p className="text-sm text-subtle">Loading memory…</p>
+        !error && <p className="text-sm text-muted-foreground">Loading memory…</p>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-6">
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-fg">Learned rules</h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-4">
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-foreground">Learned rules</h2>
               {insights.length === 0 ? (
-                <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
-                  No learned rules yet — run A/B tests and write insights to see cards here.
-                </p>
+                <Card>
+                  <CardContent className="p-6">
+                    <p className="text-sm text-muted-foreground">
+                      No learned rules yet — run A/B tests and write insights to see cards here.
+                    </p>
+                  </CardContent>
+                </Card>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {insights.map((insight, index) => (
-                    <div
-                      key={`${insight.title}-${index}`}
-                      className="rounded-xl border border-edge bg-card p-4"
-                    >
-                      <div className="mb-2 flex items-center gap-2">
-                        <Lightbulb className="h-4 w-4 text-insight" />
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-                          {insight.title}
-                        </p>
-                      </div>
-                      <p className="line-clamp-3 text-sm text-fg">{insight.detail}</p>
-                    </div>
+                    <Card key={`${insight.title}-${index}`}>
+                      <CardContent className="p-4">
+                        <div className="mb-2 flex items-center gap-2">
+                          <Lightbulb className="h-4 w-4 text-insight" />
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            {insight.title}
+                          </p>
+                        </div>
+                        <p className="line-clamp-3 text-sm text-foreground">{insight.detail}</p>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               )}
             </section>
 
-            <section className="rounded-xl border border-edge bg-card p-5">
-              <h2 className="mb-3 text-sm font-semibold text-fg">Write to memory</h2>
-              <form onSubmit={handleUpdate} className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label htmlFor="memory-key" className="text-sm font-medium text-muted">
-                      Key
-                    </label>
-                    <input
-                      id="memory-key"
-                      type="text"
-                      value={key}
-                      onChange={(event) => setKey(event.target.value)}
-                      placeholder="e.g. tiktok_best_pacing"
-                      className="w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
-                    />
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-semibold">Write to memory</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleUpdate} className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="memory-key">Key</Label>
+                      <Input
+                        id="memory-key"
+                        type="text"
+                        value={key}
+                        onChange={(event) => setKey(event.target.value)}
+                        placeholder="e.g. tiktok_best_pacing"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="memory-value">Value</Label>
+                      <Input
+                        id="memory-value"
+                        type="text"
+                        value={value}
+                        onChange={(event) => setValue(event.target.value)}
+                        placeholder='JSON or text, e.g. {"ctr": 0.03}'
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label htmlFor="memory-value" className="text-sm font-medium text-muted">
-                      Value
-                    </label>
-                    <input
-                      id="memory-value"
-                      type="text"
-                      value={value}
-                      onChange={(event) => setValue(event.target.value)}
-                      placeholder='JSON or text, e.g. {"ctr": 0.03}'
-                      className="w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  disabled={updating || !key.trim()}
-                  className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <PencilLine className="h-4 w-4" />
-                  {updating ? "Writing…" : "Write to memory"}
-                </button>
-                {updateMessage && <p className="text-sm text-muted">{updateMessage}</p>}
-              </form>
-            </section>
+                  <Button type="submit" disabled={updating || !key.trim()}>
+                    <PencilLine />
+                    {updating ? "Writing…" : "Write to memory"}
+                  </Button>
+                  {updateMessage && <p className="text-sm text-muted-foreground">{updateMessage}</p>}
+                </form>
+              </CardContent>
+            </Card>
           </div>
 
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-fg">Raw context</h2>
+          <section className="space-y-4">
+            <h2 className="text-sm font-semibold text-foreground">Raw context</h2>
             <JsonTree data={agentMemory.memory} />
           </section>
         </div>

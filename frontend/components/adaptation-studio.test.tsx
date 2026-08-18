@@ -113,7 +113,7 @@ describe("AdaptationStudio", () => {
 
     expect(await screen.findByText("Adaptation studio")).toBeInTheDocument();
     for (const tab of ["YouTube Shorts", "YouTube Video", "TikTok", "X"]) {
-      expect(screen.getByRole("button", { name: tab })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: tab })).toBeInTheDocument();
     }
     expect(
       screen.getByText(/no adaptation generated for youtube shorts yet/i),
@@ -214,7 +214,7 @@ describe("AdaptationStudio", () => {
 
     render(<AdaptationStudio clipId="clip-1" />);
 
-    await user.click(await screen.findByRole("button", { name: "TikTok" }));
+    await user.click(await screen.findByRole("tab", { name: "TikTok" }));
     expect(await screen.findByText("READY")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /run test & compare/i })).not.toBeInTheDocument();
   });
@@ -280,10 +280,10 @@ describe("AdaptationStudio", () => {
 
     render(<AdaptationStudio clipId="clip-1" />);
 
-    await user.click(await screen.findByRole("button", { name: /youtube video/i }));
+    await user.click(await screen.findByRole("tab", { name: /youtube video/i }));
     await user.click(await screen.findByRole("button", { name: /run test & compare/i }));
 
-    const dialog = screen.getByRole("dialog", { name: "Launch A/B test" });
+    const dialog = screen.getByRole("dialog", { name: /launch a\/b test/i });
     await user.click(within(dialog).getByRole("button", { name: "Launch" }));
 
     expect(
@@ -353,7 +353,7 @@ describe("AdaptationStudio", () => {
 
     await user.click(await screen.findByRole("button", { name: /run test & compare/i }));
 
-    const dialog = screen.getByRole("dialog", { name: "Launch A/B test" });
+    const dialog = screen.getByRole("dialog", { name: /launch a\/b test/i });
     expect(within(dialog).getByText("Thumbnail variants")).toBeInTheDocument();
     expect(within(dialog).getByText("Wait for it")).toBeInTheDocument();
 

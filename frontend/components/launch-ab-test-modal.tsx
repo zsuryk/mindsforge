@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FlaskConical, Rocket, X } from "lucide-react";
+import { FlaskConical, Rocket } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -11,6 +11,17 @@ import {
   startAbTest,
 } from "@/lib/api";
 import { EXPERIMENT_PLATFORMS } from "@/lib/platforms";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const EMPTY_TITLES: string[] = [];
 const EMPTY_VARIANTS: AdaptationThumbnailVariant[] = [];
@@ -53,8 +64,6 @@ export default function LaunchAbTestModal({
       setLaunchedId(null);
     }
   }, [open, variantKind, thumbnailVariants, suggestedTitles, initialPlatform]);
-
-  if (!open) return null;
 
   const thumbnailMode = kind === AbExperimentVariantKind.THUMBNAIL;
   const usableThumbs = thumbnailMode
@@ -113,105 +122,78 @@ export default function LaunchAbTestModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Launch A/B test"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-md rounded-xl border border-edge-strong bg-card p-6 shadow-2xl shadow-black/40"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="mb-4 flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-accent" />
-            <h2 className="font-display text-lg font-semibold text-fg">Launch A/B Test</h2>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close modal"
-            className="rounded-md p-1 text-muted transition-colors hover:bg-elevated hover:text-fg"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FlaskConical className="h-5 w-5 text-muted-foreground" />
+            Launch A/B Test
+          </DialogTitle>
+          <DialogDescription>
+            Pick the variants to run — the winner is written to memory once the test
+            concludes.
+          </DialogDescription>
+        </DialogHeader>
 
         {launchedId === null ? (
-          <>
-            <label
-              className="mb-1 block text-sm font-medium text-muted"
-              htmlFor="ab-platform"
-            >
-              Platform
-            </label>
-            <select
-              id="ab-platform"
-              value={platform}
-              onChange={(event) => setPlatform(event.target.value)}
-              className="mb-4 w-full rounded-lg border border-edge-strong bg-background px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
-            >
-              {EXPERIMENT_PLATFORMS.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="ab-platform">Platform</Label>
+              <Select
+                id="ab-platform"
+                value={platform}
+                onChange={(event) => setPlatform(event.target.value)}
+              >
+                {EXPERIMENT_PLATFORMS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
             {thumbnailVariants.length >= 2 && (
-              <div className="mb-4 flex gap-1 rounded-lg border border-edge bg-background p-1">
-                <button
-                  type="button"
-                  onClick={() => setKind(AbExperimentVariantKind.TITLE)}
-                  aria-selected={!thumbnailMode}
-                  className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                    !thumbnailMode
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted hover:text-fg"
-                  }`}
-                >
-                  Title variants
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setKind(AbExperimentVariantKind.THUMBNAIL)}
-                  aria-selected={thumbnailMode}
-                  className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                    thumbnailMode
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted hover:text-fg"
-                  }`}
-                >
-                  Thumbnail variants
-                </button>
-              </div>
+              <Tabs
+                value={kind}
+                onValueChange={(next) =>
+                  setKind(next as AbExperimentVariantKind)
+                }
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value={AbExperimentVariantKind.TITLE}>
+                    Title variants
+                  </TabsTrigger>
+                  <TabsTrigger value={AbExperimentVariantKind.THUMBNAIL}>
+                    Thumbnail variants
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
             )}
 
             {thumbnailMode ? (
-              <fieldset className="mb-4">
-                <legend className="mb-2 text-sm font-medium text-muted">
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-muted-foreground">
                   Variants (rendered thumbnails)
                 </legend>
                 {usableThumbs.length === 0 ? (
-                  <p className="text-sm text-subtle">No rendered thumbnails yet.</p>
+                  <p className="text-sm text-muted-foreground">No rendered thumbnails yet.</p>
                 ) : (
                   <div className="space-y-2">
                     {usableThumbs.map((variant) => (
                       <label
                         key={variant.id}
-                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-edge bg-background p-2.5 text-sm text-fg transition-colors hover:border-edge-strong"
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/40 bg-background/60 p-2.5 text-sm text-foreground transition-colors hover:border-border"
                       >
                         <input
                           type="checkbox"
                           checked={selectedThumbs.includes(variant.id)}
                           onChange={() => toggleThumb(variant.id)}
-                          className="accent-accent"
+                          className="size-4 accent-primary"
                         />
                         <img
                           src={mediaUrl(variant.url)}
                           alt={variant.overlay_text || variant.id}
-                          className="h-12 w-20 shrink-0 rounded-md object-cover"
+                          className="h-12 w-20 shrink-0 rounded-md border border-border/40 object-cover"
                         />
                         <span className="leading-snug">
                           {variant.overlay_text || variant.id}
@@ -222,24 +204,24 @@ export default function LaunchAbTestModal({
                 )}
               </fieldset>
             ) : (
-              <fieldset className="mb-4">
-                <legend className="mb-2 text-sm font-medium text-muted">
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-muted-foreground">
                   Variants (titles)
                 </legend>
                 <div className="space-y-2">
                   {suggestedTitles.length === 0 ? (
-                    <p className="text-sm text-subtle">No suggested titles yet.</p>
+                    <p className="text-sm text-muted-foreground">No suggested titles yet.</p>
                   ) : (
                     suggestedTitles.map((title) => (
                       <label
                         key={title}
-                        className="flex cursor-pointer items-start gap-2 rounded-lg border border-edge bg-background p-3 text-sm text-fg transition-colors hover:border-edge-strong"
+                        className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/40 bg-background/60 p-3 text-sm text-foreground transition-colors hover:border-border"
                       >
                         <input
                           type="checkbox"
                           checked={selected.includes(title)}
                           onChange={() => toggleTitle(title)}
-                          className="mt-0.5 accent-accent"
+                          className="mt-0.5 size-4 accent-primary"
                         />
                         <span className="leading-snug">{title}</span>
                       </label>
@@ -249,36 +231,35 @@ export default function LaunchAbTestModal({
               </fieldset>
             )}
 
-            <button
+            <Button
               onClick={handleLaunch}
               disabled={!canLaunch}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="w-full"
+              size="lg"
             >
-              <Rocket className="h-4 w-4" />
+              <Rocket />
               {launching ? "Launching…" : "Launch"}
-            </button>
+            </Button>
 
             {launchError && (
-              <p className="mt-3 text-center text-xs text-red-400">{launchError}</p>
+              <p className="text-center text-xs text-destructive">{launchError}</p>
             )}
-          </>
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300">
               A/B test launched! The worker is now gathering views. The winning variant
               and its insight will be recorded once the test concludes.
             </div>
-            <Link
-              href="/ab-experiments"
-              onClick={onClose}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
-            >
-              <FlaskConical className="h-4 w-4" />
-              Track it on the experiments page
-            </Link>
+            <Button asChild className="w-full" size="lg">
+              <Link href="/ab-experiments" onClick={onClose}>
+                <FlaskConical />
+                Track it on the experiments page
+              </Link>
+            </Button>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

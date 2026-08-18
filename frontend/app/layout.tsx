@@ -16,12 +16,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} bg-background font-sans text-fg antialiased`}
+        className={`${inter.variable} ${spaceGrotesk.variable} bg-background font-sans text-foreground antialiased`}
       >
         <div className="flex min-h-screen">
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="bg-atmosphere sticky top-0 z-10 flex h-14 items-center justify-end border-b border-edge bg-background/70 px-6 backdrop-blur-md lg:px-8">
+            <header className="bg-atmosphere sticky top-0 z-10 flex h-14 items-center justify-end border-b border-border/40 bg-background/60 px-6 backdrop-blur-md lg:px-8">
               <SystemStatus />
             </header>
             <main className="flex-1 px-6 py-8 lg:px-8">{children}</main>

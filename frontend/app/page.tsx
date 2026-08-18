@@ -3,9 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Brain, FlaskConical, Link2, ListVideo, LucideIcon, Sparkles, Zap } from "lucide-react";
+import { ArrowUpRight, Brain, FlaskConical, Link2, ListVideo, LucideIcon, Sparkles, Zap } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { DashboardStats, Job, fetchDashboardStats, fetchJobs, submitJob } from "@/lib/api";
 
 const POLL_INTERVAL_MS = 5000;
@@ -21,13 +25,19 @@ function MetricCard({
   value: string;
 }) {
   return (
-    <div className="group rounded-xl border border-edge bg-card p-5 transition-colors hover:border-edge-strong">
-      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-edge bg-elevated">
-        <Icon className="h-5 w-5 text-accent" />
-      </div>
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-1 font-display text-3xl font-semibold text-fg">{value}</p>
-    </div>
+    <Card className="group transition-colors hover:border-border">
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/40 bg-secondary/50">
+            <Icon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-foreground" />
+          </div>
+        </div>
+        <p className="mt-5 text-sm text-muted-foreground">{label}</p>
+        <p className="mt-1 font-display text-3xl font-semibold tracking-tight text-foreground">
+          {value}
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -100,46 +110,43 @@ export default function DashboardPage() {
   const recentJobs = jobs.slice(0, RECENT_JOB_COUNT);
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl space-y-8">
       <header>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+        <Badge variant="outline" className="uppercase tracking-[0.18em] text-xs">
           MindsForge Studio
-        </p>
-        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-fg">
+        </Badge>
+        <h1 className="mt-4 font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           Turn long-form content into{" "}
           <span className="text-gradient">high-converting clips</span>
         </h1>
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Paste a source, and the Mind finds the golden moments, adapts them for every
           platform, and tests them autonomously.
         </p>
       </header>
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-center gap-3 rounded-xl border border-edge bg-card p-3 transition-colors focus-within:border-accent/50"
-      >
-        <Link2 className="h-5 w-5 shrink-0 text-accent" />
-        <input
-          type="text"
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-          placeholder="Paste a video URL — press Enter to process it"
-          aria-label="Video URL"
-          className="min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-subtle focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={submitting}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Zap className="h-4 w-4" />
+      <form onSubmit={handleSubmit} className="flex items-center gap-3">
+        <Card className="flex flex-1 items-center gap-3 p-2 transition-colors focus-within:border-border">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary/50">
+            <Link2 className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <Input
+            type="text"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="Paste a video URL — press Enter to process it"
+            aria-label="Video URL"
+            className="border-0 bg-transparent shadow-none focus-visible:ring-0 placeholder:text-subtle"
+          />
+        </Card>
+        <Button type="submit" disabled={submitting} size="lg" className="shrink-0">
+          <Zap />
           {submitting ? "Starting…" : "Process"}
-        </button>
+        </Button>
       </form>
-      {submitError && <p className="text-sm text-red-400">{submitError}</p>}
+      {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total Clips" icon={ListVideo} value={formatCount(stats?.total_clips)} />
         <MetricCard
           label="Active A/B Tests"
@@ -150,47 +157,46 @@ export default function DashboardPage() {
         <MetricCard label="Total Insights" icon={Brain} value={formatCount(stats?.total_insights)} />
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-fg">Recent jobs</h2>
-        {recentJobs.length === 0 ? (
-          <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
-            No jobs yet — paste a URL above to create your first clips.
-          </p>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-edge bg-card">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-edge text-xs uppercase tracking-wider text-subtle">
-                <tr>
-                  <th className="px-5 py-3 font-medium">Job</th>
-                  <th className="px-5 py-3 font-medium">Status</th>
-                  <th className="hidden px-5 py-3 font-medium sm:table-cell">Created</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-edge">
+      <section>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0 p-6 pb-4">
+            <CardTitle className="text-sm font-semibold">Recent jobs</CardTitle>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/jobs">
+                View all
+                <ArrowUpRight />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            {recentJobs.length === 0 ? (
+              <p className="px-6 pb-6 text-sm text-muted-foreground">
+                No jobs yet — paste a URL above to create your first clips.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/40">
                 {recentJobs.map((job) => (
-                  <tr key={job.id} className="transition-colors hover:bg-elevated/50">
-                    <td className="px-5 py-3">
-                      <Link href="/jobs" className="block">
-                        <p className="truncate font-medium text-fg hover:text-accent">
+                  <li key={job.id} className="transition-colors hover:bg-muted/30">
+                    <Link href="/jobs" className="flex items-center gap-4 px-6 py-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">
                           {job.title}
                         </p>
-                        <p className="truncate text-xs text-subtle">
+                        <p className="truncate text-xs text-muted-foreground">
                           {job.source_url ?? job.file_path ?? "—"}
                         </p>
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3">
+                      </div>
                       <StatusBadge status={job.status} animated />
-                    </td>
-                    <td className="hidden px-5 py-3 text-xs text-subtle sm:table-cell">
-                      {formatTimestamp(job.created_at)}
-                    </td>
-                  </tr>
+                      <span className="hidden w-32 shrink-0 text-right text-xs text-muted-foreground sm:block">
+                        {formatTimestamp(job.created_at)}
+                      </span>
+                    </Link>
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

@@ -14,6 +14,12 @@ import {
 
 import { AbExperiment, AbExperimentVariantKind, AbVariant, fetchAbExperiments, mediaUrl } from "@/lib/api";
 import { EXPERIMENT_PLATFORMS } from "@/lib/platforms";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -60,51 +66,51 @@ export default function AbExperimentsPage() {
   const failed = (experiments ?? []).filter((exp) => exp.status === "FAILED");
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-edge bg-card">
-            <BarChart3 className="h-5 w-5 text-accent" />
+        <div className="flex items-center gap-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border/40 bg-secondary/50">
+            <BarChart3 className="h-5 w-5 text-muted-foreground" />
           </div>
           <div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
               A/B Experiments
             </h1>
-            <p className="text-xs text-subtle">
+            <p className="mt-0.5 text-sm text-muted-foreground">
               Variants run until {formatViews(viewThreshold)}+ cumulative views, then the
               winner is written to memory.
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={refreshing}
-          className="flex items-center gap-2 rounded-lg border border-edge-strong bg-card px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        <Button variant="outline" onClick={load} disabled={refreshing}>
+          <RefreshCw className={cn(refreshing && "animate-spin")} />
           {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
+        </Button>
       </header>
 
       {error && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {experiments === null ? (
-        !error && <p className="text-sm text-subtle">Loading experiments…</p>
+        !error && <p className="text-sm text-muted-foreground">Loading experiments…</p>
       ) : (
         <>
           <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-fg">
-              Active tests <span className="text-subtle">({active.length})</span>
+            <h2 className="text-sm font-semibold text-foreground">
+              Active tests{" "}
+              <span className="font-normal text-muted-foreground">({active.length})</span>
             </h2>
             {active.length === 0 ? (
-              <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
-                No active tests — launch an A/B test from the clip studio.
-              </p>
+              <Card>
+                <CardContent className="p-6">
+                  <p className="text-sm text-muted-foreground">
+                    No active tests — launch an A/B test from the clip studio.
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
               <div className="grid gap-4 lg:grid-cols-2">
                 {active.map((experiment) => (
@@ -119,16 +125,21 @@ export default function AbExperimentsPage() {
           </section>
 
           <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-fg">
-              Concluded <span className="text-subtle">({concluded.length})</span>
+            <h2 className="text-sm font-semibold text-foreground">
+              Concluded{" "}
+              <span className="font-normal text-muted-foreground">({concluded.length})</span>
             </h2>
             {concluded.length === 0 ? (
-              <p className="rounded-xl border border-edge bg-card p-5 text-sm text-subtle">
-                No concluded tests yet — concluded insights land here and in the
-                Memory Inspector.
-              </p>
+              <Card>
+                <CardContent className="p-6">
+                  <p className="text-sm text-muted-foreground">
+                    No concluded tests yet — concluded insights land here and in the
+                    Memory Inspector.
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {concluded.map((experiment) => (
                   <ConcludedExperimentCard key={experiment.id} experiment={experiment} />
                 ))}
@@ -138,8 +149,9 @@ export default function AbExperimentsPage() {
 
           {failed.length > 0 && (
             <section className="space-y-4">
-              <h2 className="text-sm font-semibold text-fg">
-                Failed <span className="text-subtle">({failed.length})</span>
+              <h2 className="text-sm font-semibold text-foreground">
+                Failed{" "}
+                <span className="font-normal text-muted-foreground">({failed.length})</span>
               </h2>
               <div className="space-y-4">
                 {failed.map((experiment) => (
@@ -165,17 +177,26 @@ function CtrChart({ variants, barColor }: { variants: AbVariant[]; barColor: str
     <div className="h-48">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
-          <CartesianGrid stroke="#262633" strokeDasharray="3 3" />
-          <XAxis dataKey="name" tick={{ fill: "#9A9AA8", fontSize: 11 }} stroke="#35353F" />
-          <YAxis tick={{ fill: "#9A9AA8", fontSize: 11 }} stroke="#35353F" unit="%" />
+          <CartesianGrid stroke="hsl(var(--edge) / 0.5)" strokeDasharray="3 3" />
+          <XAxis
+            dataKey="name"
+            tick={{ fill: "hsl(var(--muted))", fontSize: 11 }}
+            stroke="hsl(var(--edge))"
+          />
+          <YAxis
+            tick={{ fill: "hsl(var(--muted))", fontSize: 11 }}
+            stroke="hsl(var(--edge))"
+            unit="%"
+          />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#13131F",
-              border: "1px solid #35353F",
+              backgroundColor: "hsl(var(--card))",
+              border: "1px solid hsl(var(--edge))",
               borderRadius: 8,
               fontSize: 12,
+              color: "hsl(var(--fg))",
             }}
-            labelStyle={{ color: "#F2F2F8" }}
+            labelStyle={{ color: "hsl(var(--fg))" }}
             formatter={(value: number) => [`${value.toFixed(2)}%`, "CTR"]}
             labelFormatter={(_: string, payload) =>
               payload && payload[0] ? payload[0].payload.fullTitle : ""
@@ -203,65 +224,61 @@ function ActiveExperimentCard({
   );
 
   return (
-    <div className="rounded-xl border border-edge bg-card p-5">
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-fg">{experiment.clip_title}</p>
-          <p className="text-xs text-subtle">
-            {platformLabel(experiment.platform)} · {experiment.variants.length} variants
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span className="flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-hover" />
-            ACTIVE
-          </span>
-          {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL && (
-            <span className="rounded-full border border-edge-strong bg-elevated/60 px-2.5 py-1 text-xs font-medium text-muted">
-              thumbnail variants
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-2.5">
-        {experiment.variants.map((variant) => (
-          <VariantRow
-            key={variant.variant_id}
-            variant={variant}
-            leading={
-              winner !== null &&
-              variant.variant_id === winner.variant_id &&
-              variant.ctr > 0
-            }
-          />
-        ))}
-      </div>
-
-      <div className="mt-4 space-y-4">
-        <div>
-          <div className="mb-1 flex justify-between text-xs text-subtle">
-            <span>Cumulative views</span>
-            <span>
-              {formatViews(totalViews)} / {formatViews(viewThreshold)}
-            </span>
+    <Card className="h-fit">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm font-semibold">{experiment.clip_title}</CardTitle>
+            <CardDescription className="mt-1">
+              {platformLabel(experiment.platform)} · {experiment.variants.length} variants
+            </CardDescription>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-elevated">
-            <div
-              className="h-full rounded-full bg-accent transition-all"
-              style={{ width: `${progress}%` }}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Badge className="border-primary/40 bg-primary/10 text-primary">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+              ACTIVE
+            </Badge>
+            {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL && (
+              <Badge variant="outline">thumbnail variants</Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2.5">
+          {experiment.variants.map((variant) => (
+            <VariantRow
+              key={variant.variant_id}
+              variant={variant}
+              leading={
+                winner !== null &&
+                variant.variant_id === winner.variant_id &&
+                variant.ctr > 0
+              }
             />
-          </div>
+          ))}
         </div>
 
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-            CTR comparison
-          </p>
-          <CtrChart variants={experiment.variants} barColor="#F97316" />
+        <div className="space-y-4">
+          <div>
+            <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
+              <span>Cumulative views</span>
+              <span>
+                {formatViews(totalViews)} / {formatViews(viewThreshold)}
+              </span>
+            </div>
+            <Progress value={progress} />
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              CTR comparison
+            </p>
+            <CtrChart variants={experiment.variants} barColor="hsl(var(--fg))" />
+          </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -273,28 +290,28 @@ function VariantRow({
   leading?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-edge bg-background p-3">
+    <div className="flex items-center gap-3 rounded-lg border border-border/40 bg-background/60 p-3">
       {variant.thumbnail_url ? (
         <img
           src={mediaUrl(variant.thumbnail_url)}
           alt=""
-          className="h-10 w-16 shrink-0 rounded-md object-cover"
+          className="h-10 w-16 shrink-0 rounded-md border border-border/40 object-cover"
         />
       ) : (
-        <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md bg-elevated text-xs text-subtle">
+        <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md bg-secondary/70 text-xs text-muted-foreground">
           no thumb
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-fg">{variant.title}</p>
-        <p className="text-xs text-subtle">
+        <p className="truncate text-sm text-foreground">{variant.title}</p>
+        <p className="text-xs text-muted-foreground">
           {formatViews(variant.views)} views · {variant.ctr.toFixed(2)}% CTR
         </p>
       </div>
       {leading && (
-        <span className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300">
+        <Badge className="border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
           leading
-        </span>
+        </Badge>
       )}
     </div>
   );
@@ -302,39 +319,40 @@ function VariantRow({
 
 function FailedExperimentCard({ experiment }: { experiment: AbExperiment }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-red-500/30 bg-card">
-      <div className="flex items-start gap-3 border-b border-red-500/20 bg-red-500/10 p-5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/20">
-          <FlaskConical className="h-5 w-5 text-red-300" />
+    <Card className="overflow-hidden border-destructive/30">
+      <CardHeader className="border-b border-destructive/20 bg-destructive/10">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/20">
+            <FlaskConical className="h-5 w-5 text-destructive" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-destructive">
+              Failed · {platformLabel(experiment.platform)} · {experiment.clip_title}
+            </p>
+            <p className="mt-1 text-sm text-foreground">
+              {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL
+                ? "Thumbnail variants"
+                : "Title variants"}{" "}
+              · {experiment.variants.length} variants
+            </p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
-            Failed · {platformLabel(experiment.platform)} ·{" "}
-            {experiment.clip_title}
-          </p>
-          <p className="mt-1 text-sm text-fg">
-            {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL
-              ? "Thumbnail variants"
-              : "Title variants"}{" "}
-            · {experiment.variants.length} variants
-          </p>
-        </div>
-      </div>
-      <div className="space-y-3 p-5">
+      </CardHeader>
+      <CardContent className="space-y-3 pt-5">
         {experiment.error_message ? (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
             {experiment.error_message}
           </div>
         ) : (
-          <p className="text-sm text-subtle">No error message recorded.</p>
+          <p className="text-sm text-muted-foreground">No error message recorded.</p>
         )}
         <div className="space-y-2">
           {experiment.variants.map((variant) => (
             <VariantRow key={variant.variant_id} variant={variant} />
           ))}
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -344,30 +362,31 @@ function ConcludedExperimentCard({ experiment }: { experiment: AbExperiment }) {
   );
 
   return (
-    <div className="overflow-hidden rounded-xl border border-emerald-500/30 bg-card">
-      <div className="flex items-start gap-3 border-b border-emerald-500/20 bg-emerald-500/10 p-5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
-          <Trophy className="h-5 w-5 text-emerald-300" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-            Winner · {platformLabel(experiment.platform)} ·{" "}
-            {experiment.clip_title}
-          </p>
-          <p className="mt-1 text-lg font-semibold text-fg">
-            {winner?.title ?? "No winner recorded"}
-          </p>
-          {winner && (
-            <p className="text-xs text-muted">
-              {formatViews(winner.views)} views · {winner.ctr.toFixed(2)}% CTR
+    <Card className="overflow-hidden border-emerald-500/30">
+      <CardHeader className="border-b border-emerald-500/20 bg-emerald-500/10">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
+            <Trophy className="h-5 w-5 text-emerald-300" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+              Winner · {platformLabel(experiment.platform)} · {experiment.clip_title}
             </p>
-          )}
+            <p className="mt-1 text-lg font-semibold tracking-tight text-foreground">
+              {winner?.title ?? "No winner recorded"}
+            </p>
+            {winner && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {formatViews(winner.views)} views · {winner.ctr.toFixed(2)}% CTR
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      </CardHeader>
 
-      <div className="space-y-4 p-5">
+      <CardContent className="space-y-4 pt-5">
         {experiment.learned_insight && (
-          <div className="rounded-lg border border-edge bg-background p-4 text-sm leading-relaxed text-fg">
+          <div className="rounded-lg border border-border/40 bg-background/60 p-4 text-sm leading-relaxed text-foreground">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-insight">
               Learned insight — written to memory
             </span>
@@ -376,13 +395,13 @@ function ConcludedExperimentCard({ experiment }: { experiment: AbExperiment }) {
         )}
 
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             CTR comparison
           </p>
-          <CtrChart variants={experiment.variants} barColor="#10b981" />
+          <CtrChart variants={experiment.variants} barColor="#34d399" />
         </div>
 
-        <p className="flex items-center gap-1.5 text-xs text-subtle">
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <FlaskConical className="h-3 w-3" />
           Concluded after{" "}
           {formatViews(
@@ -390,7 +409,7 @@ function ConcludedExperimentCard({ experiment }: { experiment: AbExperiment }) {
           )}{" "}
           total views
         </p>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

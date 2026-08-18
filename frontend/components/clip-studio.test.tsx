@@ -85,11 +85,11 @@ describe("ClipStudioPage", () => {
 
     expect(within(card).getByText("Wait for the twist")).toBeInTheDocument();
 
-    await user.click(within(card).getByRole("button", { name: "TikTok" }));
+    await user.click(within(card).getByRole("tab", { name: "TikTok" }));
     expect(within(card).getByText("POV: you almost scrolled past")).toBeInTheDocument();
     expect(within(card).queryByText("Wait for the twist")).not.toBeInTheDocument();
 
-    await user.click(within(card).getByRole("button", { name: "X" }));
+    await user.click(within(card).getByRole("tab", { name: "X" }));
     expect(within(card).getByText("Hot take:")).toBeInTheDocument();
   });
 
@@ -139,7 +139,7 @@ describe("ClipStudioPage", () => {
 
     await user.click(await screen.findByRole("button", { name: /launch a\/b test/i }));
 
-    const dialog = screen.getByRole("dialog", { name: "Launch A/B test" });
+    const dialog = screen.getByRole("dialog", { name: /launch a\/b test/i });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText("The reveal you missed")).toBeInTheDocument();
     expect(within(dialog).getByText("Why nobody talks about this")).toBeInTheDocument();
@@ -181,7 +181,7 @@ describe("ClipStudioPage", () => {
     render(<ClipStudioPage />);
 
     await user.click(await screen.findByRole("button", { name: /launch a\/b test/i }));
-    const dialog = screen.getByRole("dialog", { name: "Launch A/B test" });
+    const dialog = screen.getByRole("dialog", { name: /launch a\/b test/i });
     await user.click(within(dialog).getByRole("button", { name: "Launch" }));
 
     expect(await within(dialog).findByText("Clip not found")).toBeInTheDocument();

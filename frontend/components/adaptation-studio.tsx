@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, ClipboardCopy, Download, FlaskConical, Wand2 } from "lucide-react";
 
 import LaunchAbTestModal from "@/components/launch-ab-test-modal";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Adaptation,
   AdaptationAssets,
@@ -14,12 +18,13 @@ import {
   mediaUrl,
 } from "@/lib/api";
 import { ADAPTATION_TARGETS, AdaptationTarget } from "@/lib/platforms";
+import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 1500;
 
 const STATUS_STYLE: Record<string, string> = {
   PENDING: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-  GENERATING: "border-accent/40 bg-accent/10 text-accent",
+  GENERATING: "border-border bg-secondary/70 text-muted-foreground",
   READY: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   FAILED: "border-red-500/30 bg-red-500/10 text-red-300",
 };
@@ -112,12 +117,9 @@ function TagChips({ tags }: { tags: string[] }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((tag) => (
-        <span
-          key={tag}
-          className="rounded-full border border-edge-strong bg-elevated px-2.5 py-0.5 text-xs text-fg"
-        >
+        <Badge key={tag} variant="outline">
           {tag}
-        </span>
+        </Badge>
       ))}
     </div>
   );
@@ -145,25 +147,30 @@ function CopyBlock({
   };
 
   return (
-    <div className="rounded-lg border border-edge bg-background p-4">
+    <div className="rounded-lg border border-border/40 bg-background/60 p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </p>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={handleCopy}
           aria-label={`Copy ${label}`}
-          className="flex items-center gap-1 rounded-md border border-edge-strong px-2 py-1 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
         >
-          {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <ClipboardCopy className="h-3 w-3" />}
+          {copied ? (
+            <Check className="text-emerald-400" />
+          ) : (
+            <ClipboardCopy />
+          )}
           {copied ? "Copied" : "Copy"}
-        </button>
+        </Button>
       </div>
       {children ? (
         children
       ) : (
-        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-fg">
+        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground">
           {lines.join("\n")}
         </pre>
       )}
@@ -193,16 +200,15 @@ function manifestPanels(features: Record<string, unknown>) {
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-        STATUS_STYLE[status] ?? "border-edge-strong bg-card text-muted"
-      }`}
+    <Badge
+      variant="outline"
+      className={cn(STATUS_STYLE[status] ?? "border-border bg-secondary/70 text-muted-foreground")}
     >
       {status === "GENERATING" && (
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
       )}
       {status}
-    </span>
+    </Badge>
   );
 }
 
@@ -220,16 +226,19 @@ function AssetGrid({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {variants.length === 0 ? (
-          <p className="text-sm text-subtle">No thumbnails rendered for this surface.</p>
+          <p className="text-sm text-muted-foreground">No thumbnails rendered for this surface.</p>
         ) : (
           variants.map((variant) => (
-            <figure key={variant.id} className="overflow-hidden rounded-lg border border-edge bg-background">
+            <figure
+              key={variant.id}
+              className="overflow-hidden rounded-lg border border-border/40 bg-background/60"
+            >
               <img
                 src={mediaUrl(variant.url)}
                 alt={`Thumbnail: ${variant.overlay_text || "variant"}`}
                 className="aspect-video w-full object-cover"
               />
-              <figcaption className="truncate px-2 py-1.5 text-xs text-muted">
+              <figcaption className="truncate px-2 py-1.5 text-xs text-muted-foreground">
                 {variant.overlay_text || variant.id}
               </figcaption>
             </figure>
@@ -238,34 +247,26 @@ function AssetGrid({
       </div>
       <div className="flex flex-wrap items-center gap-3">
         {assets.captions_url && (
-          <a
-            href={mediaUrl(assets.captions_url)}
-            download
-            className="flex items-center gap-1.5 rounded-md border border-edge-strong bg-background px-3 py-1.5 text-xs text-fg transition-colors hover:border-accent hover:text-accent"
-          >
-            <Download className="h-3.5 w-3.5" />
-            captions.srt
-          </a>
+          <Button variant="outline" size="sm" asChild>
+            <a href={mediaUrl(assets.captions_url)} download>
+              <Download />
+              captions.srt
+            </a>
+          </Button>
         )}
         {assets.chapters_url && (
-          <a
-            href={mediaUrl(assets.chapters_url)}
-            download
-            className="flex items-center gap-1.5 rounded-md border border-edge-strong bg-background px-3 py-1.5 text-xs text-fg transition-colors hover:border-accent hover:text-accent"
-          >
-            <Download className="h-3.5 w-3.5" />
-            chapters.txt
-          </a>
+          <Button variant="outline" size="sm" asChild>
+            <a href={mediaUrl(assets.chapters_url)} download>
+              <Download />
+              chapters.txt
+            </a>
+          </Button>
         )}
         {platform === "youtube" && variants.length >= 2 && (
-          <button
-            type="button"
-            onClick={() => onTest(variants)}
-            className="ml-auto flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
-          >
-            <FlaskConical className="h-3.5 w-3.5" />
+          <Button size="sm" className="ml-auto" onClick={() => onTest(variants)}>
+            <FlaskConical />
             Run Test &amp; Compare
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -345,147 +346,137 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
   const isBusy = adaptation?.status === "PENDING" || adaptation?.status === "GENERATING";
 
   return (
-    <div className="rounded-xl border border-edge bg-card p-5">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
+        <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Adaptation studio
-        </h2>
-        <button
-          type="button"
-          onClick={load}
-          className="text-xs text-subtle transition-colors hover:text-fg"
-        >
+        </CardTitle>
+        <Button type="button" variant="ghost" size="sm" onClick={load}>
           Refresh
-        </button>
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-1 rounded-lg border border-edge bg-background p-1">
-        {ADAPTATION_TARGETS.map((target) => (
-          <button
-            key={targetKey(target)}
-            onClick={() => setActiveTarget(target)}
-            aria-selected={activeTarget === target}
-            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-              activeTarget === target
-                ? "bg-accent text-accent-foreground"
-                : "text-muted hover:text-fg"
-            }`}
-          >
-            {target.label}
-          </button>
-        ))}
-      </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-          {error}
-        </p>
-      )}
-
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          {adaptation === null ? (
-            <p className="text-sm text-subtle">
-              No adaptation generated for {activeTarget.label} yet.
-            </p>
-          ) : (
-            <>
-              <StatusBadge status={adaptation.status} />
-              {adaptation.error_message && (
-                <p className="text-xs text-red-400">{adaptation.error_message}</p>
-              )}
-            </>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={isBusy}
-          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Tabs
+          value={targetKey(activeTarget)}
+          onValueChange={(next) => {
+            const target = ADAPTATION_TARGETS.find((item) => targetKey(item) === next);
+            if (target) setActiveTarget(target);
+          }}
         >
-          <Wand2 className="h-4 w-4" />
-          {isBusy
-            ? "Generating…"
-            : adaptation?.status === "FAILED"
-              ? "Retry"
-              : "Generate"}
-        </button>
-      </div>
+          <TabsList className="grid w-full grid-cols-4">
+            {ADAPTATION_TARGETS.map((target) => (
+              <TabsTrigger key={targetKey(target)} value={targetKey(target)} className="px-2 text-xs">
+                {target.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {ADAPTATION_TARGETS.map((target) => (
+            <TabsContent key={targetKey(target)} value={targetKey(target)}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  {adaptation === null ? (
+                    <p className="text-sm text-muted-foreground">
+                      No adaptation generated for {target.label.toLowerCase()} yet.
+                    </p>
+                  ) : (
+                    <>
+                      <StatusBadge status={adaptation.status} />
+                      {adaptation.error_message && (
+                        <p className="text-xs text-destructive">{adaptation.error_message}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+                <Button type="button" onClick={handleGenerate} disabled={isBusy}>
+                  <Wand2 />
+                  {isBusy
+                    ? "Generating…"
+                    : adaptation?.status === "FAILED"
+                      ? "Retry"
+                      : "Generate"}
+                </Button>
+              </div>
+            </TabsContent>
+          ))}
+        </Tabs>
 
-      {adaptation?.status === "READY" && (
-        <div className="space-y-5">
-          {adaptation.features && (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {manifestPanels(adaptation.features).map((panel) => (
-                <CopyBlock
-                  key={panel.key}
-                  label={panel.label}
-                  lines={panel.lines}
-                >
-                  {panel.key === "tags" && <TagChips tags={panel.lines} />}
-                </CopyBlock>
-              ))}
-            </div>
-          )}
+        {error && (
+          <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
 
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-              Assets
-            </p>
-            {adaptation.assets ? (
-              <AssetGrid
-                assets={adaptation.assets}
-                platform={adaptation.platform}
-                onTest={handleTest}
-              />
-            ) : (
-              <p className="text-sm text-subtle">No assets rendered yet.</p>
+        {adaptation?.status === "READY" && (
+          <div className="space-y-5">
+            {adaptation.features && (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {manifestPanels(adaptation.features).map((panel) => (
+                  <CopyBlock key={panel.key} label={panel.label} lines={panel.lines}>
+                    {panel.key === "tags" && <TagChips tags={panel.lines} />}
+                  </CopyBlock>
+                ))}
+              </div>
             )}
-          </div>
 
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-              Publish checklist
-            </p>
-            <ol className="space-y-1.5">
-              {(PUBLISH_STEPS[targetKey(activeTarget)] ?? []).map((step, index) => {
-                const id = `${targetKey(activeTarget)}:${index}`;
-                return (
-                  <li key={id}>
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-edge bg-background p-2.5 text-sm text-fg transition-colors hover:border-edge-strong">
-                      <input
-                        type="checkbox"
-                        checked={checked[id] ?? false}
-                        onChange={() =>
-                          setChecked((current) => ({ ...current, [id]: !current[id] }))
-                        }
-                        className="accent-accent"
-                      />
-                      {step}
-                    </label>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        </div>
-      )}
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Assets
+              </p>
+              {adaptation.assets ? (
+                <AssetGrid
+                  assets={adaptation.assets}
+                  platform={adaptation.platform}
+                  onTest={handleTest}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">No assets rendered yet.</p>
+              )}
+            </div>
 
-      <LaunchAbTestModal
-        open={testOpen}
-        onClose={() => setTestOpen(false)}
-        clipId={clipId}
-        suggestedTitles={[]}
-        variantKind="THUMBNAIL"
-        thumbnailVariants={testVariants}
-        platform={
-          activeTarget.platform === "youtube"
-            ? activeTarget.surface === "LONG_FORM"
-              ? "youtube"
-              : "youtube_shorts"
-            : activeTarget.platform
-        }
-      />
-    </div>
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Publish checklist
+              </p>
+              <ol className="space-y-1.5">
+                {(PUBLISH_STEPS[targetKey(activeTarget)] ?? []).map((step, index) => {
+                  const id = `${targetKey(activeTarget)}:${index}`;
+                  return (
+                    <li key={id}>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border/40 bg-background/60 p-2.5 text-sm text-foreground transition-colors hover:border-border">
+                        <input
+                          type="checkbox"
+                          checked={checked[id] ?? false}
+                          onChange={() =>
+                            setChecked((current) => ({ ...current, [id]: !current[id] }))
+                          }
+                          className="size-4 accent-primary"
+                        />
+                        {step}
+                      </label>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </div>
+        )}
+
+        <LaunchAbTestModal
+          open={testOpen}
+          onClose={() => setTestOpen(false)}
+          clipId={clipId}
+          suggestedTitles={[]}
+          variantKind="THUMBNAIL"
+          thumbnailVariants={testVariants}
+          platform={
+            activeTarget.platform === "youtube"
+              ? activeTarget.surface === "LONG_FORM"
+                ? "youtube"
+                : "youtube_shorts"
+              : activeTarget.platform
+          }
+        />
+      </CardContent>
+    </Card>
   );
 }

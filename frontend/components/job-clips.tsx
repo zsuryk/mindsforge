@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FlaskConical } from "lucide-react";
+import { ArrowUpRight, FlaskConical } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Clip, fetchJobClips, mediaUrl } from "@/lib/api";
 
 function formatTime(seconds: number): string {
@@ -29,19 +30,19 @@ export default function JobClips({ jobId }: { jobId: string }) {
   }, [jobId]);
 
   if (clips === null) {
-    return <p className="px-5 pb-4 text-xs text-subtle">Loading clips…</p>;
+    return <p className="px-6 pb-4 text-xs text-muted-foreground">Loading clips…</p>;
   }
 
   if (clips.length === 0) {
-    return <p className="px-5 pb-4 text-xs text-subtle">No clips extracted.</p>;
+    return <p className="px-6 pb-4 text-xs text-muted-foreground">No clips extracted.</p>;
   }
 
   return (
-    <div className="grid gap-4 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 px-6 py-5 sm:grid-cols-2 lg:grid-cols-3">
       {clips.map((clip) => (
         <article
           key={clip.id}
-          className="overflow-hidden rounded-lg border border-edge bg-background"
+          className="overflow-hidden rounded-lg border border-border/40 bg-background/60"
         >
           <video
             controls
@@ -50,21 +51,21 @@ export default function JobClips({ jobId }: { jobId: string }) {
             src={mediaUrl(clip.video_url)}
             className="aspect-video w-full bg-black"
           />
-          <div className="space-y-1 p-3">
-            <p className="truncate text-sm font-medium text-fg" title={clip.title}>
+          <div className="space-y-1 p-4">
+            <p className="truncate text-sm font-medium text-foreground" title={clip.title}>
               {clip.title}
             </p>
-            <p className="text-xs text-subtle">
+            <p className="text-xs text-muted-foreground">
               {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
             </p>
-            <p className="line-clamp-2 text-xs text-muted">{clip.transcript_text}</p>
-            <a
-              href={`/clips/${clip.id}`}
-              className="mt-2 inline-flex items-center gap-1 rounded-md bg-elevated px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-edge-strong"
-            >
-              <FlaskConical className="h-3 w-3 text-accent" />
-              Open in studio
-            </a>
+            <p className="line-clamp-2 text-xs text-muted-foreground">{clip.transcript_text}</p>
+            <Button variant="secondary" size="sm" asChild className="mt-2">
+              <a href={`/clips/${clip.id}`}>
+                <FlaskConical />
+                Open in studio
+                <ArrowUpRight />
+              </a>
+            </Button>
           </div>
         </article>
       ))}

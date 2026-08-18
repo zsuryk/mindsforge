@@ -63,7 +63,7 @@ function JsonNode({
             type="button"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
-            className="mt-0.5 mr-1 text-muted hover:text-fg"
+            className="mt-0.5 mr-1 text-muted-foreground hover:text-foreground"
           >
             {open ? (
               <ChevronDown className="h-3.5 w-3.5" />
@@ -78,14 +78,14 @@ function JsonNode({
           {name !== null && (
             <>
               <span className="text-mind">{JSON.stringify(name)}</span>
-              <span className="text-muted">: </span>
+              <span className="text-muted-foreground">: </span>
             </>
           )}
           {isExpandable(value) ? (
             <>
-              <span className="text-muted">{Array.isArray(value) ? "[" : "{"}</span>
+              <span className="text-muted-foreground">{Array.isArray(value) ? "[" : "{"}</span>
               {!isEmpty(value) && <span className="text-subtle">…</span>}
-              <span className="text-muted">{Array.isArray(value) ? "]" : "}"}</span>
+              <span className="text-muted-foreground">{Array.isArray(value) ? "]" : "}"}</span>
               {!isEmpty(value) && (
                 <span className="ml-2 text-xs text-subtle">
                   {Array.isArray(value)
@@ -100,7 +100,7 @@ function JsonNode({
         </span>
       </div>
       {expandable && open && !isEmpty(value) && (
-        <div className="ml-[1.375rem] border-l border-edge/70 pl-2">
+        <div className="ml-[1.375rem] border-l border-border/40 pl-2">
           {entriesOf(value).map(([childName, childValue], index) => (
             <JsonNode
               key={childName ?? index}
@@ -117,7 +117,7 @@ function JsonNode({
 
 export function JsonTree({ data }: { data: unknown }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-edge bg-background p-4">
+    <div className="overflow-x-auto rounded-lg border border-border/40 bg-background/60 p-4">
       <JsonNode name={null} value={data as JsonValue} depth={0} />
     </div>
   );

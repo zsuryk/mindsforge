@@ -42,7 +42,7 @@ export function SystemStatus() {
 
   return (
     <div
-      className="flex items-center gap-2 rounded-full border border-edge bg-card px-3 py-1.5 text-xs text-muted"
+      className="flex items-center gap-2 rounded-full border border-border/40 bg-card/60 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur-md"
       title="Live status from the backend health endpoint"
     >
       <span className={`h-2 w-2 rounded-full ${dotClass}`} />
