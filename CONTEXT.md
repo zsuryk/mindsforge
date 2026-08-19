@@ -50,3 +50,11 @@ _Avoid_: A/B test, trial
 **Learned insight**:
 The natural-language conclusion of an experiment, authored by the Mind and persisted to its memory.
 _Avoid_: lesson, takeaway
+
+**Clip studio**:
+The page where a creator reviews a scored clip: plays the video, reads the transcript, checks platform hooks, and drives the adaptation studio.
+_Avoid_: clip page, clip detail view
+
+**Adaptation studio**:
+The section of the clip studio where adaptations are generated, their assets downloaded, and the publish checklist followed.
+_Avoid_: adaptation pane, adaptation panel

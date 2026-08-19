@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft, FlaskConical, Quote } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +18,34 @@ function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const secs = Math.round(seconds % 60);
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
+}
+
+function ScrollableTranscript({ text }: { text: string }) {
+  const [scrollable, setScrollable] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setScrollable(el.scrollHeight > el.clientHeight + 1);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [text]);
+
+  return (
+    <div className="relative">
+      <div ref={ref} className="max-h-[min(45vh,24rem)] overflow-y-auto">
+        <p className="text-sm leading-relaxed text-foreground">{text}</p>
+      </div>
+      {scrollable && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-background to-transparent"
+        />
+      )}
+    </div>
+  );
 }
 
 export default function ClipStudioPage() {
@@ -103,12 +131,12 @@ export default function ClipStudioPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm leading-relaxed text-foreground">{clip.transcript_text}</p>
+              <ScrollableTranscript text={clip.transcript_text} />
             </CardContent>
           </Card>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:row-span-2">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -187,9 +215,11 @@ export default function ClipStudioPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
 
-      <AdaptationStudio clipId={clip.id} />
+        <div className="space-y-4 lg:col-span-2">
+          <AdaptationStudio clipId={clip.id} />
+        </div>
+      </div>
 
       <LaunchAbTestModal
         open={modalOpen}

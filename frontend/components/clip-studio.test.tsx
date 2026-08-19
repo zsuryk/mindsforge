@@ -196,4 +196,34 @@ describe("ClipStudioPage", () => {
     expect(await screen.findByText(/no hooks yet/i)).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
   });
+
+  it("caps the transcript in a scrollable pane", async () => {
+    stubClipStudioFetch(makeScoredClip());
+
+    render(<ClipStudioPage />);
+
+    const paragraph = await screen.findByText(/moment everyone has been waiting for/i);
+    const scroller = paragraph.closest('[class*="overflow-y-auto"]') as HTMLElement;
+    expect(scroller).not.toBeNull();
+    expect(scroller.className).toContain("max-h-");
+  });
+
+  it("pins the score and hooks rail on desktop beside the adaptation studio", async () => {
+    stubClipStudioFetch(makeScoredClip());
+
+    render(<ClipStudioPage />);
+
+    const virality = await screen.findByRole("heading", { name: /virality score/i });
+    const rail = virality.closest('[class*="lg:sticky"]') as HTMLElement;
+    expect(rail).not.toBeNull();
+    expect(rail.className).toContain("lg:top-4");
+    expect(rail.className).toContain("lg:self-start");
+    expect(rail.className).toContain("lg:row-span-2");
+
+    const studio = await screen.findByRole("heading", { name: /adaptation studio/i });
+    const studioWrapper = studio.closest('[class*="lg:col-span-2"]') as HTMLElement;
+    expect(studioWrapper).not.toBeNull();
+    expect(studioWrapper.parentElement).toBe(rail.parentElement);
+    expect(studioWrapper.previousElementSibling).toBe(rail);
+  });
 });
