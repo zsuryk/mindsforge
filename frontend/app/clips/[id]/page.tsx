@@ -89,7 +89,7 @@ export default function ClipStudioPage() {
   const platformHooks = metadata?.platform_hooks ?? null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link
