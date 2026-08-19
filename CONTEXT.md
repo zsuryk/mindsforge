@@ -58,3 +58,23 @@ _Avoid_: clip page, clip detail view
 **Adaptation studio**:
 The section of the clip studio where adaptations are generated, their assets downloaded, and the publish checklist followed.
 _Avoid_: adaptation pane, adaptation panel
+
+**Chat**:
+The creator's ongoing conversation with the Mind, held in the dedicated `mindsforge-chat` conversation; the Mind answers from the thread, its own memory, and its Tavily connection when asked.
+_Avoid_: DM, assistant window, messenger
+
+**Brand rule**:
+A creator preference stated in chat and recorded into the Mind's memory (`brand_rules`); every subsequent generation prompt carries it.
+_Avoid_: preference, style directive
+
+**Trend research**:
+A Tavily-backed web search run from the chat whose results are saved to the Mind's memory (`trend_research`) and inform adaptation generation.
+_Avoid_: trend search, research query
+
+**Mind activity**:
+A logged record of the Mind's background work (scoring, experiment sweeps, conclusions, adaptations, research), surfaced on the dashboard feed.
+_Avoid_: event, audit log
+
+**Mind notification**:
+A message the app posts into the chat conversation so the Mind learns of an outcome (experiment conclusion, adaptation generated) and remembers it natively.
+_Avoid_: alert, push, system message

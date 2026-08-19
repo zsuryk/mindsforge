@@ -72,3 +72,46 @@ Service calls to `https://build.hellominds.ai/api/v1` with `MINDS_BUILDER_API_KE
 Ticket graph below in `issues/`. Slices: skeleton → ingestion → transcription → clip extraction → Minds scoring + clip studio → memory inspector → autonomous A/B testing → overview dashboard → Mind-decided A/B conclusion (09) + scoring hard gate (10) → adaptation domain & lazy generation (11) → adaptation assets & rendering (12) → adaptation studio UI (13).
 
 Blocking: 09 and 10 are independent of each other (each modifies shipped behavior: ticket 07 conclusion, tickets 04/05 scoring). 10 → 11 → 12; 13 is blocked by 09, 11 and 12.
+
+## Post-review scope: chat, trends, and autonomy (tickets 15–22)
+
+Decided by grilling (2026-08-20). Four additions that deepen the Mind-integrality
+story for the hackathon: a creator-facing Chat with the Mind, trend research,
+visible background execution, and a real-data feedback path for experiments.
+
+- **Chat (15, 17, 18, 19):** `/chat` is a real conversation with the Mind via the
+  messaging API on a dedicated `mindsforge-chat` alias (180s reply timeout,
+  history loads the thread; chat never mixes with scoring conversations). The
+  Mind remembers natively from the thread — no app-side memory injection. A
+  Groq extraction sidecar detects brand-rule statements in chat and appends them
+  to a `brand_rules` memory key (structured list, injected into every generation
+  prompt via `MEMORY_CONTEXT_KEYS`). `notify_mind` posts `[MindsForge]`-marked
+  messages into the chat thread when an Experiment concludes or an Adaptation is
+  generated, so the Mind learns outcomes from its own conversation; the UI
+  renders marked messages as system chips.
+- **Trend research (16):** app-side Tavily (`TAVILY_API_KEY`) searched from the
+  chat ("Research trends" button or "search trends for X" trigger); results are
+  saved to a `trend_research` memory key (last 10) and posted into the chat
+  thread as a system chip. The last 5 entries within 7 days are appended to
+  adaptation-generation prompts (adaptations only — scoring stays untouched).
+  The Mind may additionally use its own Tavily connection when asked open-ended
+  questions (best-effort, instructed at chat initialisation).
+- **Mind at Work feed (20):** a `mind_activity` table logged by every
+  Mind-touching service (scoring, experiment sweeps/conclusions, adaptations,
+  research, chat) and surfaced as a 5s-polled dashboard panel — the A/B worker
+  becomes a visible 24/7 heartbeat.
+- **Persistence recap (21):** a "What your Mind remembers" dashboard card
+  rendering brand voice, recent brand rules, learned insights and trend research
+  from the memory tree, plus a scripted day-1 → day-2 persistence demo in the
+  README.
+- **Real-data feedback (22):** experiments gain `data_source`
+  (SIMULATED|MANUAL); `PATCH /ab-tests/{id}/variants/{variant_id}` lets the
+  creator enter real views/clicks (experiment flips to MANUAL and the simulation
+  worker skips it), so a published clip can conclude on real data.
+
+Environment: adds `TAVILY_API_KEY`. Memory keys: adds `brand_rules`,
+`trend_research`. Migrations: 0006 (data_source), 0007 (mind_activity).
+
+Blocking: 19 is blocked by 15, 16 and 17; 16 and 17 are blocked by 15 (they hook
+into `POST /chat/messages` and the system-marker convention); 18 is blocked by
+15. 20, 21 and 22 are independent.
