@@ -95,7 +95,7 @@ export default function JobsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="mx-auto max-w-7xl space-y-8">
       <header>
         <Badge variant="outline" className="uppercase tracking-[0.18em] text-xs">
           Studio
@@ -179,7 +179,7 @@ export default function JobsPage() {
                   <div className="flex items-center justify-between gap-4 px-6 py-4">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{job.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
                         {job.source_url ?? job.file_path ?? "—"}
                       </p>
                       {job.status === "FAILED" && job.error_message && (

@@ -51,15 +51,17 @@ export default function JobClips({ jobId }: { jobId: string }) {
             src={mediaUrl(clip.video_url)}
             className="aspect-video w-full bg-black"
           />
-          <div className="space-y-1 p-4">
-            <p className="truncate text-sm font-medium text-foreground" title={clip.title}>
-              {clip.title}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
-            </p>
-            <p className="line-clamp-2 text-xs text-muted-foreground">{clip.transcript_text}</p>
-            <Button variant="secondary" size="sm" asChild className="mt-2">
+          <div className="p-4">
+            <div className="space-y-1">
+              <p className="truncate text-sm font-medium text-foreground" title={clip.title}>
+                {clip.title}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
+              </p>
+              <p className="line-clamp-2 text-xs text-muted-foreground">{clip.transcript_text}</p>
+            </div>
+            <Button variant="secondary" size="sm" asChild className="mt-4">
               <a href={`/clips/${clip.id}`}>
                 <FlaskConical />
                 Open in studio
