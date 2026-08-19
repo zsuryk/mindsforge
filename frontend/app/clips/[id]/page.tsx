@@ -129,10 +129,12 @@ export default function ClipStudioPage() {
           </Card>
 
           <Card>
-            <CardContent>
-              <CardTitle className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Platform hooks
               </CardTitle>
+            </CardHeader>
+            <CardContent>
               {platformHooks === null ? (
                 <p className="text-sm text-muted-foreground">No hooks yet — scoring pending.</p>
               ) : (

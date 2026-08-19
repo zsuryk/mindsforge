@@ -81,7 +81,7 @@ describe("ClipStudioPage", () => {
     render(<ClipStudioPage />);
 
     const hooksCard = await screen.findByRole("heading", { name: /platform hooks/i });
-    const card = hooksCard.closest("div") as HTMLElement;
+    const card = hooksCard.closest(".rounded-xl") as HTMLElement;
 
     expect(within(card).getByText("Wait for the twist")).toBeInTheDocument();
 
