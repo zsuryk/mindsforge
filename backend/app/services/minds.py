@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 MINDS_BUILDER_BASE_URL = "https://api.build.hellominds.ai"
 BUILDER_API_KEY_HEADER = "X-Api-Key"
 HTTP_TIMEOUT_SECONDS = 30.0
+MINDS_HEALTH_TIMEOUT_SECONDS = 5.0
 
 # One conversation per Mind carries all of MindsForge's messages. The Mind
 # replies asynchronously, so generation calls send a message then poll the
@@ -200,6 +201,28 @@ def _agent_id() -> str:
     if not agent_id:
         raise MindsConfigError("MINDS_AGENT_ID is not configured")
     return agent_id
+
+
+def check_connection() -> str:
+    """Lightweight reachability probe of the Minds Builder API.
+
+    Returns "unconfigured" when credentials are missing, "ok" when the API
+    answers an authenticated history fetch, and "down" otherwise (request
+    errors, timeouts, or non-200 responses). Uses a short timeout so the
+    health endpoint stays snappy.
+    """
+    if not get_settings().MINDS_BUILDER_API_KEY or not get_settings().MINDS_AGENT_ID:
+        return "unconfigured"
+    try:
+        response = httpx.get(
+            f"{MINDS_BUILDER_BASE_URL}/v1/messaging/histories/{MESSAGING_ALIAS}",
+            headers=_headers(),
+            params={"limit": 1},
+            timeout=MINDS_HEALTH_TIMEOUT_SECONDS,
+        )
+    except httpx.RequestError:
+        return "down"
+    return "ok" if response.status_code == 200 else "down"
 
 
 def _decode_json(response: httpx.Response, context: str) -> Any:

@@ -285,6 +285,68 @@ def test_agent_id_requires_configuration(monkeypatch: pytest.MonkeyPatch) -> Non
         minds._agent_id()
 
 
+# --- connection check ---
+
+
+def test_check_connection_unconfigured_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    assert minds.check_connection() == "unconfigured"
+
+
+def test_check_connection_unconfigured_without_agent_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    assert minds.check_connection() == "unconfigured"
+
+
+def test_check_connection_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_minds(monkeypatch)
+    captured: dict[str, Any] = {}
+
+    def fake_get(url: str, **kwargs: Any) -> FakeResponse:
+        captured["url"] = url
+        captured["timeout"] = kwargs.get("timeout")
+        captured["headers"] = kwargs.get("headers")
+        return FakeResponse({}, 200)
+
+    monkeypatch.setattr(minds.httpx, "get", fake_get)
+    assert minds.check_connection() == "ok"
+    assert captured["url"].endswith(f"/v1/messaging/histories/{minds.MESSAGING_ALIAS}")
+    assert captured["timeout"] == minds.MINDS_HEALTH_TIMEOUT_SECONDS
+    assert captured["headers"] == {minds.BUILDER_API_KEY_HEADER: "test-builder-key"}
+
+
+def test_check_connection_down_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx, "get", lambda url, **kwargs: FakeResponse({}, 401)
+    )
+    assert minds.check_connection() == "down"
+
+
+def test_check_connection_down_on_request_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds.httpx,
+        "get",
+        lambda url, **kwargs: (_ for _ in ()).throw(httpx.ConnectError("boom")),
+    )
+    assert minds.check_connection() == "down"
+
+
 # --- clip metadata generation ---
 
 

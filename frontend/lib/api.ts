@@ -9,9 +9,12 @@ export function mediaUrl(path: string): string {
   return `${origin}${path}`;
 }
 
+export type MindsStatus = "ok" | "down" | "unconfigured";
+
 export type HealthStatus = {
   status: "ok" | "degraded" | "down";
   service: string;
+  minds: MindsStatus;
   timestamp: string;
 };
 
