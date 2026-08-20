@@ -205,7 +205,10 @@ export type AbVariant = {
   thumbnail_url: string | null;
   ctr: number;
   views: number;
+  clicks: number;
 };
+
+export type AbExperimentDataSource = "SIMULATED" | "MANUAL";
 
 export type AbExperiment = {
   id: string;
@@ -214,6 +217,7 @@ export type AbExperiment = {
   platform: string;
   variant_kind: AbExperimentVariantKind;
   status: AbExperimentStatus;
+  data_source: AbExperimentDataSource;
   variants: AbVariant[];
   winning_variant_id: string | null;
   learned_insight: string | null;
@@ -324,6 +328,26 @@ export type AbActive = {
 
 export async function fetchAbExperiments(): Promise<AbActive> {
   const res = await fetch(`${API_URL}/ab-tests/active`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function updateAbVariantMetrics(
+  experimentId: string,
+  variantId: string,
+  views: number,
+  clicks: number,
+): Promise<AbExperiment> {
+  const res = await fetch(
+    `${API_URL}/ab-tests/${experimentId}/variants/${variantId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ views, clicks }),
+    },
+  );
   if (!res.ok) {
     throw await extractError(res);
   }

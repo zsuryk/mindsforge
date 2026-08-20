@@ -10,7 +10,11 @@ from sqlalchemy import select
 from app.db.base import get_session_factory
 from app.models.activity import MindActivity
 from app.models.clip import Clip
-from app.models.experiment import AbExperiment, AbExperimentStatus
+from app.models.experiment import (
+    AbExperiment,
+    AbExperimentDataSource,
+    AbExperimentStatus,
+)
 from app.models.job import Job
 from app.services import ab_testing, minds
 
@@ -270,6 +274,235 @@ def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
     failed_body = body["experiments"][2]
     assert failed_body["status"] == "FAILED"
     assert failed_body["error_message"] == "builder api down"
+
+
+def test_active_endpoint_exposes_data_source_per_experiment(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        simulated = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[{"variant_id": "v1", "title": "A", "ctr": 1.0, "views": 50}],
+        )
+        manual = add_experiment(
+            db,
+            clip_id=clip.id,
+            data_source=AbExperimentDataSource.MANUAL,
+            variants=[{"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 100}],
+        )
+
+    body = test_client.get("/api/v1/ab-tests/active").json()["experiments"]
+
+    by_id = {item["id"]: item for item in body}
+    assert by_id[simulated.id]["data_source"] == "SIMULATED"
+    assert by_id[manual.id]["data_source"] == "MANUAL"
+
+
+def test_patch_variant_metrics_updates_ctr_and_flips_data_source(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 1.0, "views": 50, "clicks": 1},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 100, "clicks": 3},
+            ],
+        )
+
+    res = test_client.patch(
+        f"/api/v1/ab-tests/{experiment.id}/variants/v2",
+        json={"views": 1000, "clicks": 42},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["id"] == experiment.id
+    assert body["data_source"] == "MANUAL"
+    edited = next(v for v in body["variants"] if v["variant_id"] == "v2")
+    assert edited["views"] == 1000
+    assert edited["clicks"] == 42
+    assert edited["ctr"] == 4.2
+    untouched = next(v for v in body["variants"] if v["variant_id"] == "v1")
+    assert untouched["views"] == 50
+    assert untouched["clicks"] == 1
+
+    with get_session_factory()() as db:
+        stored = db.get(AbExperiment, experiment.id)
+        assert stored.data_source == AbExperimentDataSource.MANUAL
+        stored_v2 = next(v for v in stored.variants if v["variant_id"] == "v2")
+        assert stored_v2["views"] == 1000
+        assert stored_v2["clicks"] == 42
+        assert stored_v2["ctr"] == 4.2
+
+
+def test_patch_variant_metrics_accepts_zero_views_with_zero_clicks(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[{"variant_id": "v1", "title": "A", "ctr": 0.0, "views": 0, "clicks": 0}],
+        )
+
+    res = test_client.patch(
+        f"/api/v1/ab-tests/{experiment.id}/variants/v1",
+        json={"views": 0, "clicks": 0},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    edited = next(v for v in body["variants"] if v["variant_id"] == "v1")
+    assert edited["views"] == 0
+    assert edited["clicks"] == 0
+    assert edited["ctr"] == 0.0
+
+
+def test_patch_variant_metrics_404s_for_unknown_experiment_or_variant(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[{"variant_id": "v1", "title": "A", "ctr": 0.0, "views": 0, "clicks": 0}],
+        )
+
+    missing_experiment = test_client.patch(
+        "/api/v1/ab-tests/nope/variants/v1",
+        json={"views": 10, "clicks": 1},
+    )
+    assert missing_experiment.status_code == 404
+    assert missing_experiment.json()["detail"] == "Experiment not found"
+
+    missing_variant = test_client.patch(
+        f"/api/v1/ab-tests/{experiment.id}/variants/nope",
+        json={"views": 10, "clicks": 1},
+    )
+    assert missing_variant.status_code == 404
+    assert missing_variant.json()["detail"] == "Variant not found"
+
+
+def test_patch_variant_metrics_422s_for_non_active_negative_or_impossible_ratio(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        active = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[{"variant_id": "v1", "title": "A", "ctr": 0.0, "views": 0, "clicks": 0}],
+        )
+        concluded = add_experiment(
+            db,
+            clip_id=clip.id,
+            status=AbExperimentStatus.CONCLUDED,
+            winning_variant_id="v2",
+            variants=[{"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 100, "clicks": 3}],
+        )
+
+    non_active = test_client.patch(
+        f"/api/v1/ab-tests/{concluded.id}/variants/v2",
+        json={"views": 200, "clicks": 5},
+    )
+    assert non_active.status_code == 422
+    assert "Only active experiments" in non_active.json()["detail"]
+
+    negative = test_client.patch(
+        f"/api/v1/ab-tests/{active.id}/variants/v1",
+        json={"views": -1, "clicks": 1},
+    )
+    assert negative.status_code == 422
+
+    impossible = test_client.patch(
+        f"/api/v1/ab-tests/{active.id}/variants/v1",
+        json={"views": 10, "clicks": 11},
+    )
+    assert impossible.status_code == 422
+    assert "Clicks cannot exceed views" in impossible.json()["detail"]
+
+
+def test_sweep_skips_manual_experiments_but_concludes_them_at_threshold(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        below = add_experiment(
+            db,
+            clip_id=clip.id,
+            data_source=AbExperimentDataSource.MANUAL,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 1.0, "views": 100, "clicks": 1},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 200, "clicks": 4},
+            ],
+        )
+        ready = add_experiment(
+            db,
+            clip_id=clip.id,
+            data_source=AbExperimentDataSource.MANUAL,
+            variants=[
+                {"variant_id": "v3", "title": "C", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v4", "title": "D", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    stub_winner(monkeypatch, variant_id="v3", reasoning="Real numbers decided it.")
+
+    concluded = ab_testing.refresh_active_experiments(
+        rng=random.Random(42), view_threshold=1000
+    )
+
+    assert [item.id for item in concluded] == [ready.id]
+    with get_session_factory()() as db:
+        below_stored = db.get(AbExperiment, below.id)
+        assert below_stored.status == AbExperimentStatus.ACTIVE
+        assert below_stored.variants[0]["views"] == 100
+        assert below_stored.variants[1]["views"] == 200
+        ready_stored = db.get(AbExperiment, ready.id)
+        assert ready_stored.status == AbExperimentStatus.CONCLUDED
+        assert ready_stored.winning_variant_id == "v3"
+        assert ready_stored.learned_insight == "Real numbers decided it."
+
+
+def test_sweep_still_simulates_when_manual_experiments_exist(
+    client: tuple[TestClient, Path],
+) -> None:
+    _, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        add_experiment(
+            db,
+            clip_id=clip.id,
+            data_source=AbExperimentDataSource.MANUAL,
+            variants=[{"variant_id": "v1", "title": "A", "ctr": 1.0, "views": 100, "clicks": 1}],
+        )
+        simulated = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[{"variant_id": "v2", "title": "B", "ctr": 0.0, "views": 0, "clicks": 0}],
+        )
+
+    ab_testing.refresh_active_experiments(
+        rng=random.Random(3), view_threshold=10_000
+    )
+
+    with get_session_factory()() as db:
+        stored = db.get(AbExperiment, simulated.id)
+        assert stored.variants[0]["views"] > 0
 
 
 def test_sweep_accumulates_views_and_keeps_experiment_active_below_threshold(

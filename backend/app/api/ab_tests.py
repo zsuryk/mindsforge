@@ -10,10 +10,17 @@ from app.db.base import get_db
 from app.models.clip import Clip
 from app.models.experiment import (
     AbExperiment,
+    AbExperimentDataSource,
     AbExperimentStatus,
     AbExperimentVariantKind,
 )
-from app.schemas.experiment import AbActiveOut, AbExperimentOut, AbExperimentStartIn
+from app.schemas.experiment import (
+    AbActiveOut,
+    AbExperimentOut,
+    AbExperimentStartIn,
+    AbVariantMetricsIn,
+)
+from app.services.ab_testing import ctr_percent
 from app.services.media import media_url
 
 router = APIRouter()
@@ -29,6 +36,7 @@ def _to_out(experiment: AbExperiment) -> AbExperimentOut:
         platform=experiment.platform,
         variant_kind=experiment.variant_kind,
         status=experiment.status,
+        data_source=experiment.data_source,
         variants=[
             {
                 "variant_id": variant["variant_id"],
@@ -36,6 +44,7 @@ def _to_out(experiment: AbExperiment) -> AbExperimentOut:
                 "thumbnail_url": media_url(variant.get("thumbnail_path")),
                 "ctr": variant.get("ctr") or 0.0,
                 "views": variant.get("views") or 0,
+                "clicks": variant.get("clicks") or 0,
             }
             for variant in (experiment.variants or [])
         ],
@@ -103,6 +112,54 @@ def start_ab_test(
         ],
     )
     db.add(experiment)
+    db.commit()
+    db.refresh(experiment)
+    return _to_out(experiment)
+
+
+@router.patch(
+    "/ab-tests/{experiment_id}/variants/{variant_id}",
+    response_model=AbExperimentOut,
+)
+def update_variant_metrics(
+    experiment_id: str,
+    variant_id: str,
+    payload: AbVariantMetricsIn,
+    db: Session = Depends(get_db),
+) -> AbExperimentOut:
+    """Feed real view/click numbers into an ACTIVE experiment.
+
+    Editing any variant flips the experiment to MANUAL data, so the
+    simulation worker stops adding traffic on top of real numbers.
+    """
+    experiment = db.get(AbExperiment, experiment_id)
+    if experiment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        )
+    if experiment.status != AbExperimentStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Only active experiments accept real metrics",
+        )
+    variants = [dict(variant) for variant in (experiment.variants or [])]
+    variant = next(
+        (item for item in variants if item["variant_id"] == variant_id), None
+    )
+    if variant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found"
+        )
+    if payload.clicks > payload.views:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Clicks cannot exceed views",
+        )
+    variant["views"] = payload.views
+    variant["clicks"] = payload.clicks
+    variant["ctr"] = ctr_percent(payload.clicks, payload.views)
+    experiment.variants = variants
+    experiment.data_source = AbExperimentDataSource.MANUAL
     db.commit()
     db.refresh(experiment)
     return _to_out(experiment)

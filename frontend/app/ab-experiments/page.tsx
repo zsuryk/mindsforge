@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BarChart3, FlaskConical, RefreshCw, Trophy } from "lucide-react";
+import { BarChart3, FlaskConical, Pencil, RefreshCw, Trophy } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -12,12 +12,20 @@ import {
   YAxis,
 } from "recharts";
 
-import { AbExperiment, AbExperimentVariantKind, AbVariant, fetchAbExperiments, mediaUrl } from "@/lib/api";
+import {
+  AbExperiment,
+  AbExperimentVariantKind,
+  AbVariant,
+  fetchAbExperiments,
+  mediaUrl,
+  updateAbVariantMetrics,
+} from "@/lib/api";
 import { EXPERIMENT_PLATFORMS } from "@/lib/platforms";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -118,6 +126,7 @@ export default function AbExperimentsPage() {
                     key={experiment.id}
                     experiment={experiment}
                     viewThreshold={viewThreshold}
+                    onUpdated={load}
                   />
                 ))}
               </div>
@@ -212,16 +221,63 @@ function CtrChart({ variants, barColor }: { variants: AbVariant[]; barColor: str
 function ActiveExperimentCard({
   experiment,
   viewThreshold,
+  onUpdated,
 }: {
   experiment: AbExperiment;
   viewThreshold: number;
+  onUpdated: () => void;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ views: "", clicks: "" });
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const totalViews = experiment.variants.reduce((sum, variant) => sum + variant.views, 0);
   const progress = Math.min(100, Math.round((totalViews / viewThreshold) * 100));
   const winner = experiment.variants.reduce<AbVariant | null>(
     (best, variant) => (best === null || variant.ctr > best.ctr ? variant : best),
     null,
   );
+
+  const startEdit = (variant: AbVariant) => {
+    setEditingId(variant.variant_id);
+    setDraft({ views: String(variant.views), clicks: String(variant.clicks) });
+    setEditError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditError(null);
+  };
+
+  const saveMetrics = async (variantId: string) => {
+    const views = Number(draft.views);
+    const clicks = Number(draft.clicks);
+    if (
+      !Number.isInteger(views) ||
+      views < 0 ||
+      !Number.isInteger(clicks) ||
+      clicks < 0
+    ) {
+      setEditError("Views and clicks must be whole, non-negative numbers.");
+      return;
+    }
+    if (clicks > views) {
+      setEditError("Clicks cannot exceed views.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateAbVariantMetrics(experiment.id, variantId, views, clicks);
+      setEditingId(null);
+      setEditError(null);
+      onUpdated();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to save metrics");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Card className="h-fit">
@@ -238,6 +294,13 @@ function ActiveExperimentCard({
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
               ACTIVE
             </Badge>
+            {experiment.data_source === "MANUAL" ? (
+              <Badge className="border-amber-500/40 bg-amber-500/10 text-amber-300">
+                manual
+              </Badge>
+            ) : (
+              <Badge variant="outline">simulated</Badge>
+            )}
             {experiment.variant_kind === AbExperimentVariantKind.THUMBNAIL && (
               <Badge variant="outline">thumbnail variants</Badge>
             )}
@@ -255,6 +318,16 @@ function ActiveExperimentCard({
                 variant.variant_id === winner.variant_id &&
                 variant.ctr > 0
               }
+              onEdit={startEdit}
+              editing={editingId === variant.variant_id}
+              draftViews={editingId === variant.variant_id ? draft.views : ""}
+              draftClicks={editingId === variant.variant_id ? draft.clicks : ""}
+              onDraftViews={(value) => setDraft((current) => ({ ...current, views: value }))}
+              onDraftClicks={(value) => setDraft((current) => ({ ...current, clicks: value }))}
+              onSave={saveMetrics}
+              onCancel={cancelEdit}
+              saving={saving}
+              editError={editingId === variant.variant_id ? editError : null}
             />
           ))}
         </div>
@@ -285,9 +358,29 @@ function ActiveExperimentCard({
 function VariantRow({
   variant,
   leading = false,
+  onEdit,
+  editing = false,
+  draftViews = "",
+  draftClicks = "",
+  onDraftViews,
+  onDraftClicks,
+  onSave,
+  onCancel,
+  saving = false,
+  editError = null,
 }: {
   variant: AbVariant;
   leading?: boolean;
+  onEdit?: (variant: AbVariant) => void;
+  editing?: boolean;
+  draftViews?: string;
+  draftClicks?: string;
+  onDraftViews?: (value: string) => void;
+  onDraftClicks?: (value: string) => void;
+  onSave?: (variantId: string) => void;
+  onCancel?: () => void;
+  saving?: boolean;
+  editError?: string | null;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border/40 bg-background/60 p-3">
@@ -302,16 +395,58 @@ function VariantRow({
           no thumb
         </div>
       )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground">{variant.title}</p>
-        <p className="text-xs text-muted-foreground">
-          {formatViews(variant.views)} views · {variant.ctr.toFixed(2)}% CTR
-        </p>
-      </div>
-      {leading && (
+      {editing ? (
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="truncate text-sm text-foreground">{variant.title}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              value={draftViews}
+              onChange={(event) => onDraftViews?.(event.target.value)}
+              aria-label={`views for ${variant.title}`}
+              className="h-8 w-24"
+            />
+            <Input
+              type="number"
+              min={0}
+              value={draftClicks}
+              onChange={(event) => onDraftClicks?.(event.target.value)}
+              aria-label={`clicks for ${variant.title}`}
+              className="h-8 w-24"
+            />
+            <Button size="sm" onClick={() => onSave?.(variant.variant_id)} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+          {editError && <p className="text-xs text-destructive">{editError}</p>}
+        </div>
+      ) : (
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-foreground">{variant.title}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatViews(variant.views)} views · {variant.clicks} clicks · {variant.ctr.toFixed(2)}% CTR
+          </p>
+        </div>
+      )}
+      {!editing && leading && (
         <Badge className="border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
           leading
         </Badge>
+      )}
+      {!editing && onEdit && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onEdit(variant)}
+          aria-label={`Edit metrics for ${variant.title}`}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Edit
+        </Button>
       )}
     </div>
   );

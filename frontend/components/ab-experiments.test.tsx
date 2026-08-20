@@ -20,6 +20,7 @@ function activeExperiment(): AbExperiment {
     platform: "youtube_shorts",
     variant_kind: "TITLE",
     status: "ACTIVE",
+    data_source: "SIMULATED",
     error_message: null,
     variants: [
       {
@@ -28,6 +29,7 @@ function activeExperiment(): AbExperiment {
         thumbnail_url: "/media/clips/job-1/clip-1.png",
         ctr: 3.2,
         views: 420,
+        clicks: 14,
       },
       {
         variant_id: "v2",
@@ -35,6 +37,7 @@ function activeExperiment(): AbExperiment {
         thumbnail_url: "/media/clips/job-1/clip-1.png",
         ctr: 1.8,
         views: 380,
+        clicks: 7,
       },
     ],
     winning_variant_id: null,
@@ -52,6 +55,7 @@ function concludedExperiment(): AbExperiment {
     platform: "tiktok",
     variant_kind: "TITLE",
     status: "CONCLUDED",
+    data_source: "SIMULATED",
     error_message: null,
     variants: [
       {
@@ -60,6 +64,7 @@ function concludedExperiment(): AbExperiment {
         thumbnail_url: null,
         ctr: 4.8,
         views: 640,
+        clicks: 31,
       },
       {
         variant_id: "w2",
@@ -67,6 +72,7 @@ function concludedExperiment(): AbExperiment {
         thumbnail_url: null,
         ctr: 2.1,
         views: 360,
+        clicks: 8,
       },
     ],
     winning_variant_id: "w1",
@@ -92,8 +98,8 @@ describe("AbExperimentsPage", () => {
     expect(screen.getByText("YouTube Shorts · 2 variants")).toBeInTheDocument();
     expect(screen.getByText("ACTIVE")).toBeInTheDocument();
     expect(screen.getByText("The reveal you missed")).toBeInTheDocument();
-    expect(screen.getByText(/420 views · 3.20% CTR/)).toBeInTheDocument();
-    expect(screen.getByText(/380 views · 1.80% CTR/)).toBeInTheDocument();
+    expect(screen.getByText(/420 views · 14 clicks · 3.20% CTR/)).toBeInTheDocument();
+    expect(screen.getByText(/380 views · 7 clicks · 1.80% CTR/)).toBeInTheDocument();
     expect(screen.getByText("leading")).toBeInTheDocument();
     expect(screen.getByText("800 / 1,000")).toBeInTheDocument();
     expect(screen.getByText("CTR comparison")).toBeInTheDocument();

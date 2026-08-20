@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.base import get_session_factory
-from app.models.experiment import AbExperiment, AbExperimentStatus
+from app.models.experiment import (
+    AbExperiment,
+    AbExperimentDataSource,
+    AbExperimentStatus,
+)
 from app.services import activity, minds
 
 logger = logging.getLogger(__name__)
@@ -22,6 +26,11 @@ def _latent_ctr(variant_id: str) -> float:
     """Deterministic per-variant true click-through rate (fraction, 1%–10%)."""
     seeded = random.Random(variant_id)
     return LATENT_CTR_MIN + seeded.random() * (LATENT_CTR_MAX - LATENT_CTR_MIN)
+
+
+def ctr_percent(clicks: int, views: int) -> float:
+    """Click-through rate as a percentage, rounded to 2dp."""
+    return round(clicks / views * 100.0, 2) if views else 0.0
 
 
 def _simulate_sweep(variant: dict[str, object], rng: random.Random) -> int:
@@ -42,7 +51,7 @@ def _simulate_sweep(variant: dict[str, object], rng: random.Random) -> int:
     )
     variant["views"] = views
     variant["clicks"] = clicks
-    variant["ctr"] = round(clicks / views * 100.0, 2) if views else 0.0
+    variant["ctr"] = ctr_percent(clicks, views)
     return new_views
 
 
@@ -158,9 +167,12 @@ def refresh_active_experiments(
     """One worker sweep: simulate traffic for every ACTIVE experiment and
     finalize any that crossed the cumulative view threshold.
 
-    Finalization asks the Mind to pick the winner; a Mind failure
-    (unconfigured, network, or invalid verdict) fails the experiment
-    closed with an error message instead of a max-CTR fallback.
+    Experiments fed real numbers (`data_source == MANUAL`) are skipped by
+    the simulation — no fake traffic on top of reality — but still conclude
+    normally once their cumulative views cross the threshold. Finalization
+    asks the Mind to pick the winner; a Mind failure (unconfigured, network,
+    or invalid verdict) fails the experiment closed with an error message
+    instead of a max-CTR fallback.
     Returns the finalized experiments (concluded or failed).
     """
     rng = rng or random
@@ -176,12 +188,15 @@ def refresh_active_experiments(
         ).all()
         for experiment in experiments:
             variants = [dict(variant) for variant in (experiment.variants or [])]
-            for variant in variants:
-                new_views_total += _simulate_sweep(variant, rng)
-                swept_variants += 1
-            experiment.variants = variants
-            db.commit()
-            total_views = sum(int(v.get("views") or 0) for v in variants)
+            if experiment.data_source == AbExperimentDataSource.MANUAL:
+                total_views = sum(int(v.get("views") or 0) for v in variants)
+            else:
+                for variant in variants:
+                    new_views_total += _simulate_sweep(variant, rng)
+                    swept_variants += 1
+                experiment.variants = variants
+                db.commit()
+                total_views = sum(int(v.get("views") or 0) for v in variants)
             if total_views >= threshold:
                 try:
                     _conclude_experiment(db, experiment)

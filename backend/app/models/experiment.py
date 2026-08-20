@@ -19,6 +19,11 @@ class AbExperimentStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class AbExperimentDataSource(str, Enum):
+    SIMULATED = "SIMULATED"
+    MANUAL = "MANUAL"
+
+
 class AbExperimentVariantKind(str, Enum):
     TITLE = "TITLE"
     THUMBNAIL = "THUMBNAIL"
@@ -49,6 +54,16 @@ class AbExperiment(Base):
             values_callable=lambda e: [m.value for m in e],
         ),
         default=AbExperimentStatus.ACTIVE,
+        nullable=False,
+    )
+    data_source: Mapped[AbExperimentDataSource] = mapped_column(
+        SAEnum(
+            AbExperimentDataSource,
+            native_enum=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        default=AbExperimentDataSource.SIMULATED,
+        server_default="SIMULATED",
         nullable=False,
     )
     variants: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
