@@ -29,7 +29,7 @@ Everything renders into real assets (thumbnail PNGs, `captions.srt`, `chapters.t
 - **uv** — Python package manager
 - **Node.js 20+** (LTS recommended)
 - **FFmpeg 6+** (in system PATH)
-- **API keys** — the Mind is fail-closed without `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory); contact for the Minds keys or generate one. Transcription runs on Groq by default (`GROQ_API_KEY` — free key at https://console.groq.com), or fully locally with `TRANSCRIPTION_PROVIDER=local` if you're in a region Groq doesn't support — no VPN needed.
+- **API keys** — the Mind is fail-closed without `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory); contact for the Minds keys or generate one. Transcription runs on Groq by default (`GROQ_API_KEY` — free key at https://console.groq.com), or fully locally with `TRANSCRIPTION_PROVIDER=local` if you're in a region Groq doesn't support — no VPN needed. Chat trend research needs `TAVILY_API_KEY` (free key at https://tavily.com).
 
 ## Install the tools
 
@@ -65,7 +65,7 @@ In the `backend` folder:
 cp .env.example .env     # Windows: Copy-Item .env.example .env
 ```
 
-Fill in the Mind keys (and `GROQ_API_KEY` unless using `TRANSCRIPTION_PROVIDER=local`) in `.env`. Everything else has sane defaults.
+Fill in the Mind keys, `GROQ_API_KEY` (unless using `TRANSCRIPTION_PROVIDER=local`) and `TAVILY_API_KEY` in `.env`. Everything else has sane defaults.
 
 ## Run
 
