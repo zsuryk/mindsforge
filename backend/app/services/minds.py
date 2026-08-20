@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
@@ -30,6 +30,27 @@ MESSAGING_ALIAS = "mindsforge"
 MESSAGE_REPLY_TIMEOUT_SECONDS = 600.0
 MESSAGE_REPLY_POLL_INTERVAL_SECONDS = 2.0
 
+# Chat lives on its own conversation so it never mixes with the structured
+# scoring/adaptation prompts (which keep MESSAGING_ALIAS and their per-attempt
+# aliases). Replies are short and were measured at ~15s, so the deadline is
+# fast: a hung reply fails the request instead of stalling the demo.
+CHAT_ALIAS = "mindsforge-chat"
+CHAT_REPLY_TIMEOUT_SECONDS = 180.0
+
+# The app's own messages in the chat thread (notifications, trend results,
+# initialisation) are senderType-1 rows prefixed with this marker. The Mind
+# reads them as normal content; the UI renders them as system chips and strips
+# the prefix.
+SYSTEM_MARKER = "[MindsForge] "
+
+CHAT_INIT_INSTRUCTION = (
+    f"{SYSTEM_MARKER}You are this creator's content strategist. Ground every "
+    "answer in this conversation and in the creator's memory. When the creator "
+    "states a brand rule — a preference about how their content should look, "
+    "sound, or be packaged — acknowledge it and remember it. You may use your "
+    "own Tavily connection to research trends when asked open-ended questions."
+)
+
 # Mind replies arrive as senderType 0 (human messages are senderType 1).
 MIND_SENDER_TYPE = 0
 
@@ -49,6 +70,19 @@ class MindsError(RuntimeError):
 
 class MindsConfigError(MindsError):
     """Raised when Minds credentials are missing from configuration."""
+
+
+class ChatMessage(BaseModel):
+    """A single row of the creator chat thread.
+
+    Role mapping: senderType 0 rows are the Mind; senderType 1 rows prefixed
+    with the system marker are the app's own notifications (marker stripped);
+    any other senderType 1 row is the creator's message.
+    """
+
+    role: Literal["user", "mind", "system"]
+    text: str
+    fingerprint: str | None = None
 
 
 class ClipMetadata(BaseModel):
@@ -316,12 +350,20 @@ def _is_alias_already_exists(response: httpx.Response) -> bool:
     return (body.get("error") or {}).get("message") == "alias already exists"
 
 
-def _latest_history_fingerprint(alias: str = MESSAGING_ALIAS) -> str | None:
-    response = _get(f"/v1/messaging/histories/{alias}", params={"limit": 1})
+def _history_rows(alias: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Fetch the conversation history for an alias, newest row first."""
+    response = _get(f"/v1/messaging/histories/{alias}", params={"limit": limit})
     if response.status_code != 200:
         raise MindsError(f"History fetch failed with status {response.status_code}")
     rows = _decode_json(response, "History fetch")
-    if not isinstance(rows, list) or not rows:
+    if not isinstance(rows, list):
+        raise MindsError("History fetch returned an unexpected shape")
+    return rows
+
+
+def _latest_history_fingerprint(alias: str = MESSAGING_ALIAS) -> str | None:
+    rows = _history_rows(alias, limit=1)
+    if not rows:
         return None
     fingerprint = rows[0].get("fingerprint")
     return str(fingerprint) if fingerprint else None
@@ -362,12 +404,20 @@ def _is_newer_than(row: dict[str, Any], cursor: str | None) -> bool:
     return _fingerprint_recency(str(fingerprint)) > _fingerprint_recency(cursor)
 
 
-def _message_mind(agent_id: str, prompt: str, alias: str = MESSAGING_ALIAS) -> str:
+def _message_mind(
+    agent_id: str,
+    prompt: str,
+    alias: str = MESSAGING_ALIAS,
+    timeout_seconds: float | None = None,
+) -> str:
     """Send a prompt to the Mind and block until it replies, returning the text.
 
     The Builder API messaging flow is asynchronous: create the conversation,
     POST the message, then poll history for a Mind reply (senderType 0) that
     is newer than the message we just sent.
+
+    ``timeout_seconds`` bounds how long to wait for the reply: scoring flows
+    keep the generous default while chat passes a fast chat timeout.
     """
     _ensure_conversation(agent_id, alias)
     cursor = _latest_history_fingerprint(alias)
@@ -377,18 +427,11 @@ def _message_mind(agent_id: str, prompt: str, alias: str = MESSAGING_ALIAS) -> s
     if response.status_code != 200:
         raise MindsError(f"Message send failed with status {response.status_code}")
 
-    deadline = time.monotonic() + MESSAGE_REPLY_TIMEOUT_SECONDS
+    deadline = time.monotonic() + (
+        timeout_seconds if timeout_seconds is not None else MESSAGE_REPLY_TIMEOUT_SECONDS
+    )
     while True:
-        history = _get(
-            f"/v1/messaging/histories/{alias}",
-            params={"limit": 50},
-        )
-        if history.status_code != 200:
-            raise MindsError(f"History fetch failed with status {history.status_code}")
-        rows = _decode_json(history, "History fetch")
-        if not isinstance(rows, list):
-            raise MindsError("History fetch returned an unexpected shape")
-        for row in rows:
+        for row in _history_rows(alias, limit=50):
             if not _is_newer_than(row, cursor):
                 continue
             if _is_mind_reply(row):
@@ -398,6 +441,77 @@ def _message_mind(agent_id: str, prompt: str, alias: str = MESSAGING_ALIAS) -> s
         if time.monotonic() > deadline:
             raise MindsError("Timed out waiting for a Mind reply")
         time.sleep(MESSAGE_REPLY_POLL_INTERVAL_SECONDS)
+
+
+def send_chat_message(text: str) -> str:
+    """Send a creator message to the Mind on the dedicated chat conversation.
+
+    Uses the ``mindsforge-chat`` alias so chat traffic never mixes with the
+    structured scoring/adaptation conversations. When the conversation is
+    empty, a system-marked initialisation instruction is posted first so the
+    Mind is primed before the creator's first message.
+
+    Reply attribution is best-effort: the first Mind reply newer than the
+    message we sent is returned, so a Mind acknowledgment of the initialisation
+    instruction (or of a background notification) may be returned instead of
+    the true answer. The UI polls the full history, so the real reply always
+    surfaces in the thread (documented, accepted edge case).
+
+    Raises MindsError on any failure (missing credentials, HTTP errors, or a
+    reply that exceeds the chat timeout) — fail-closed, no fallback text.
+    """
+    agent_id = _agent_id()
+    _ensure_conversation(agent_id, CHAT_ALIAS)
+    if not _history_rows(CHAT_ALIAS, limit=1):
+        response = _post(
+            "/v1/messaging/message",
+            {"alias": CHAT_ALIAS, "messageText": CHAT_INIT_INSTRUCTION},
+        )
+        if response.status_code != 200:
+            raise MindsError(
+                "Initialisation message send failed with "
+                f"status {response.status_code}"
+            )
+    return _message_mind(
+        agent_id, text, alias=CHAT_ALIAS, timeout_seconds=CHAT_REPLY_TIMEOUT_SECONDS
+    )
+
+
+def fetch_chat_history(limit: int = 50) -> list[ChatMessage]:
+    """Return the chat thread as role-annotated messages, oldest first.
+
+    The conversation lives natively on the Minds side (one alias = one
+    thread), so this simply maps the Builder history rows: senderType 0 rows
+    are the Mind, senderType 1 rows prefixed with the system marker are the
+    app's own notifications (marker stripped), anything else is the creator.
+    """
+    _agent_id()
+    messages: list[ChatMessage] = []
+    for row in _history_rows(CHAT_ALIAS, limit=limit):
+        text = row.get("messageText")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        fingerprint = row.get("fingerprint")
+        if _is_mind_reply(row):
+            role: Literal["user", "mind", "system"] = "mind"
+        elif text.startswith(SYSTEM_MARKER):
+            role = "system"
+            text = text[len(SYSTEM_MARKER) :]
+        else:
+            role = "user"
+        messages.append(
+            ChatMessage(
+                role=role,
+                text=text,
+                fingerprint=str(fingerprint) if fingerprint else None,
+            )
+        )
+    messages.sort(
+        key=lambda message: _fingerprint_recency(message.fingerprint)
+        if message.fingerprint
+        else 0
+    )
+    return messages
 
 
 def build_memory_context(memory: dict[str, Any]) -> str:

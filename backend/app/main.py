@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.api.ab_tests import router as ab_tests_router
 from app.api.adaptations import router as adaptations_router
+from app.api.chat import router as chat_router
 from app.api.clips import router as clips_router
 from app.api.dashboard import router as dashboard_router
 from app.api.health import router as health_router
@@ -104,4 +105,5 @@ app.include_router(clips_router, prefix=settings.API_V1_PREFIX, tags=["clips"])
 app.include_router(memory_router, prefix=settings.API_V1_PREFIX, tags=["agent"])
 app.include_router(ab_tests_router, prefix=settings.API_V1_PREFIX, tags=["ab-tests"])
 app.include_router(adaptations_router, prefix=settings.API_V1_PREFIX, tags=["adaptations"])
+app.include_router(chat_router, prefix=settings.API_V1_PREFIX, tags=["chat"])
 app.include_router(dashboard_router, prefix=settings.API_V1_PREFIX, tags=["dashboard"])
