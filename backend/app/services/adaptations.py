@@ -5,7 +5,7 @@ from uuid import uuid4
 from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import AdaptationStatus, ClipAdaptation
-from app.services import minds
+from app.services import minds, trends
 from app.services.adaptation_assets import render_adaptation_assets
 from app.services.transcription import TranscriptSegment
 
@@ -14,13 +14,33 @@ logger = logging.getLogger(__name__)
 
 def _memory_context(settings) -> str | None:
     """Best-effort memory context: a fetch failure degrades to None rather
-    than failing generation — only the verdict call is gated (ADR-0002)."""
+    than failing generation — only the verdict call is gated (ADR-0002).
+
+    Adaptations-only trend injection: the curated trend-research block is
+    appended when fresh trend data exists, so hooks/tags/captions follow
+    current trends while clip scoring keeps its honest-read design. No trend
+    data → no block → the context is exactly what every other flow sees.
+    """
     try:
         memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
     except minds.MindsError as exc:
         logger.info("Memory context unavailable, generating without it: %s", exc)
         memory = None
-    return minds.build_memory_context(memory) if memory else None
+    if not memory:
+        return None
+    # The curated trend block below is the bounded view (latest 5 entries in
+    # 7 days) for adaptations, so the raw trend_research dump is excluded from
+    # the generic context here — otherwise the prompt would carry stale entries
+    # past the bound, twice. Every other memory-prompt flow still sees the raw
+    # bounded list via MEMORY_CONTEXT_KEYS.
+    context_memory = {
+        key: value for key, value in memory.items() if key != trends.TREND_RESEARCH_KEY
+    }
+    context = minds.build_memory_context(context_memory) if context_memory else None
+    trend_block = trends.build_trend_block(memory)
+    if trend_block:
+        context = f"{context}\n\n{trend_block}" if context else trend_block
+    return context
 
 
 def _persist_adaptation_history(adaptation: ClipAdaptation) -> None:

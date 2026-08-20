@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     MEDIA_DIR: Path = BACKEND_DIR / "media"
     MINDS_BUILDER_API_KEY: str = ""
     MINDS_AGENT_ID: str = ""
+    TAVILY_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     TRANSCRIPTION_PROVIDER: str = "groq"
     WHISPER_MODEL: str = "small"

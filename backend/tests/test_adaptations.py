@@ -5,11 +5,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import ClipAdaptation
 from app.models.clip import Clip
 from app.models.job import Job
-from app.services import minds
+from app.services import adaptations, minds
 
 YOUTUBE_LONG_FORM_FEATURES = {
     "chapters": [{"title": "The hook", "timestamp": 2.0}],
@@ -610,3 +611,58 @@ def test_memory_history_written_only_after_row_is_ready(
     assert detail["status"] == "READY"
 
     assert statuses_at_fetch == ["GENERATING", "READY"]
+
+
+def test_adaptation_read_prompt_carries_trend_block_when_trend_data_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    _minds_env: None,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    monkeypatch.setattr(
+        minds,
+        "fetch_memory",
+        lambda agent_id: {
+            "trend_research": [
+                {
+                    "query": "fitness shorts",
+                    "platform": "youtube",
+                    "results": [
+                        {"title": "Best Fitness Shorts", "url": "https://example.com", "content": "content"}
+                    ],
+                    "researched_at": recent,
+                }
+            ]
+        },
+    )
+
+    context = adaptations._memory_context(get_settings())
+
+    assert context is not None
+    assert "Trending research (last 7 days):" in context
+    assert "fitness shorts" in context
+    # The raw trend_research dump is excluded from the adaptation context —
+    # the curated block is the only trend signal, so stale entries can never
+    # bypass the 7-day bound or reach the prompt twice.
+    assert "\ntrend_research:" not in context
+    prompt = minds._build_adaptation_read_prompt(
+        {"id": "c1", "title": "t", "start_time": 0, "end_time": 10, "transcript": "x"},
+        "youtube",
+        "LONG_FORM",
+        [{"start": 0, "end": 5, "text": "hi"}],
+        context,
+    )
+    assert "Trending research (last 7 days):" in prompt
+
+
+def test_adaptation_memory_context_has_no_trend_block_without_trend_data(
+    monkeypatch: pytest.MonkeyPatch,
+    _minds_env: None,
+) -> None:
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
+
+    context = adaptations._memory_context(get_settings())
+
+    assert context is not None
+    assert "Trending research" not in context

@@ -60,6 +60,7 @@ MEMORY_CONTEXT_KEYS = (
     "historical_insights",
     "ab_test_history",
     "adaptation_history",
+    "trend_research",
 )
 MEMORY_CONTEXT_VALUE_LIMIT = 2000
 
@@ -443,6 +444,23 @@ def _message_mind(
         time.sleep(MESSAGE_REPLY_POLL_INTERVAL_SECONDS)
 
 
+def _ensure_chat_initialised() -> None:
+    """Post the system-marked initialisation instruction when the chat
+    conversation is empty, so the Mind is primed before the creator's first
+    message — or before any background notification that lands first."""
+    _ensure_conversation(_agent_id(), CHAT_ALIAS)
+    if not _history_rows(CHAT_ALIAS, limit=1):
+        response = _post(
+            "/v1/messaging/message",
+            {"alias": CHAT_ALIAS, "messageText": CHAT_INIT_INSTRUCTION},
+        )
+        if response.status_code != 200:
+            raise MindsError(
+                "Initialisation message send failed with "
+                f"status {response.status_code}"
+            )
+
+
 def send_chat_message(text: str) -> str:
     """Send a creator message to the Mind on the dedicated chat conversation.
 
@@ -461,20 +479,28 @@ def send_chat_message(text: str) -> str:
     reply that exceeds the chat timeout) — fail-closed, no fallback text.
     """
     agent_id = _agent_id()
-    _ensure_conversation(agent_id, CHAT_ALIAS)
-    if not _history_rows(CHAT_ALIAS, limit=1):
-        response = _post(
-            "/v1/messaging/message",
-            {"alias": CHAT_ALIAS, "messageText": CHAT_INIT_INSTRUCTION},
-        )
-        if response.status_code != 200:
-            raise MindsError(
-                "Initialisation message send failed with "
-                f"status {response.status_code}"
-            )
+    _ensure_chat_initialised()
     return _message_mind(
         agent_id, text, alias=CHAT_ALIAS, timeout_seconds=CHAT_REPLY_TIMEOUT_SECONDS
     )
+
+
+def post_chat_notification(text: str) -> None:
+    """Post a system-marked notification to the chat conversation.
+
+    The message is prefixed with the system marker so the UI renders it as a
+    chip and the Mind reads it as an event in the thread (e.g. trend research
+    results it can answer grounded in). The chat is initialised first when the
+    conversation is empty, mirroring ``send_chat_message``.
+    """
+    _agent_id()
+    _ensure_chat_initialised()
+    response = _post(
+        "/v1/messaging/message",
+        {"alias": CHAT_ALIAS, "messageText": f"{SYSTEM_MARKER}{text}"},
+    )
+    if response.status_code != 200:
+        raise MindsError(f"Message send failed with status {response.status_code}")
 
 
 def fetch_chat_history(limit: int = 50) -> list[ChatMessage]:

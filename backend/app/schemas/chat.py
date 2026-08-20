@@ -22,3 +22,18 @@ class ChatSendOut(BaseModel):
 
 class ChatHistoryOut(BaseModel):
     messages: list[ChatMessageOut]
+
+
+class TrendResearchIn(BaseModel):
+    query: str
+    platform: str | None = None
+
+
+class TrendResultOut(BaseModel):
+    title: str
+    url: str
+    content: str
+
+
+class TrendResearchOut(BaseModel):
+    results: list[TrendResultOut]
