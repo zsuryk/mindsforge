@@ -4,13 +4,16 @@ import {
   deleteJob,
   fetchAbExperiments,
   fetchAgentMemory,
+  fetchChatHistory,
   fetchClip,
   fetchDashboardStats,
   fetchJob,
   fetchJobClips,
   fetchJobs,
   mediaUrl,
+  researchTrends,
   retryJob,
+  sendChatMessage,
   startAbTest,
   submitJob,
   updateAgentMemory,
@@ -370,5 +373,95 @@ describe("deleteJob", () => {
       "http://localhost:8000/api/v1/jobs/abc",
       { method: "DELETE" },
     );
+  });
+});
+
+describe("fetchChatHistory", () => {
+  it("returns the chat thread from GET /chat/history", async () => {
+    const messages = [
+      { role: "user", text: "Make hooks bolder", fingerprint: "abc" },
+      { role: "mind", text: "Got it.", fingerprint: "def" },
+      { role: "system", text: "Experiment concluded on clip 'x'.", fingerprint: null },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ messages }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchChatHistory();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/chat/history",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    expect(result).toEqual({ messages });
+  });
+
+  it("throws the backend detail message on error responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "minds api down" }, 502)),
+    );
+
+    await expect(fetchChatHistory()).rejects.toThrow("minds api down");
+  });
+});
+
+describe("sendChatMessage", () => {
+  it("posts the message and returns the reply with saved rules", async () => {
+    const payload = {
+      reply: "Always open with a bold hook.",
+      rules: ["Always open with a bold hook"],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sendChatMessage("Always open with a bold hook");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/chat/messages");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({ message: "Always open with a bold hook" }),
+    );
+    expect(result).toEqual(payload);
+  });
+
+  it("throws the backend detail message on error responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "minds api down" }, 502)),
+    );
+
+    await expect(sendChatMessage("hello")).rejects.toThrow("minds api down");
+  });
+});
+
+describe("researchTrends", () => {
+  it("posts the query and returns the trend results", async () => {
+    const results = [
+      {
+        title: "Hook formulas that dominate 2026",
+        url: "https://example.com/hooks",
+        content: "Trending hook structures across shorts.",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ results }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await researchTrends("hook formulas");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/chat/trends");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ query: "hook formulas" }));
+    expect(result).toEqual({ results });
+  });
+
+  it("throws the backend detail message on error responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "tavily api down" }, 502)),
+    );
+
+    await expect(researchTrends("hooks")).rejects.toThrow("tavily api down");
   });
 });

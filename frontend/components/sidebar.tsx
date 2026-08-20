@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Brain, Flame, LayoutDashboard, ListVideo } from "lucide-react";
+import {
+  BarChart3,
+  Brain,
+  Flame,
+  LayoutDashboard,
+  ListVideo,
+  MessageCircle,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/jobs", label: "Jobs", icon: ListVideo },
   { href: "/ab-experiments", label: "A/B Experiments", icon: BarChart3 },
   { href: "/memory-inspector", label: "Memory Inspector", icon: Brain },

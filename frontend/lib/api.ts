@@ -344,3 +344,56 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   }
   return res.json();
 }
+
+export type ChatRole = "user" | "mind" | "system";
+
+export type ChatMessage = {
+  role: ChatRole;
+  text: string;
+  fingerprint: string | null;
+};
+
+export type ChatSendResult = {
+  reply: string;
+  rules: string[];
+};
+
+export type TrendResult = {
+  title: string;
+  url: string;
+  content: string;
+};
+
+export async function fetchChatHistory(): Promise<{ messages: ChatMessage[] }> {
+  const res = await fetch(`${API_URL}/chat/history`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function sendChatMessage(message: string): Promise<ChatSendResult> {
+  const res = await fetch(`${API_URL}/chat/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function researchTrends(
+  query: string,
+): Promise<{ results: TrendResult[] }> {
+  const res = await fetch(`${API_URL}/chat/trends`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
