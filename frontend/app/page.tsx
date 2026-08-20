@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { PersistenceCard } from "@/components/persistence-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,7 +38,7 @@ import {
   MindActivity,
   submitJob,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatRelativeTime } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 5000;
 const RECENT_JOB_COUNT = 5;
@@ -96,16 +97,6 @@ const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   "rule-saved": BookMarked,
   "mind-notified": Bell,
 };
-
-function formatRelativeTime(iso: string, now: number): string {
-  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
 
 function MindAtWorkPanel({ events }: { events: MindActivity[] }) {
   const now = Date.now();
@@ -265,6 +256,8 @@ export default function DashboardPage() {
         </div>
         <MindAtWorkPanel events={activity} />
       </section>
+
+      <PersistenceCard />
 
       <section>
         <Card>

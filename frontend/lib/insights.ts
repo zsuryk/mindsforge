@@ -1,9 +1,22 @@
 export type Insight = {
   title: string;
   detail: string;
+  created_at?: string | null;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export type BrandRuleEntry = {
+  text: string;
+  created_at: string | null;
+};
+
+export type TrendResearchEntry = {
+  query: string;
+  researched_at: string | null;
+};
+
+export const BRAND_VOICE_TITLE = "Brand voice";
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -26,12 +39,66 @@ function platformLabel(platform: string): string {
     .join(" ");
 }
 
+function timestampMs(value: string | null | undefined): number {
+  if (typeof value !== "string" || !value) return 0;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+export function collectBrandRules(
+  memory: Record<string, unknown>,
+  limit = 3,
+): BrandRuleEntry[] {
+  const rules = memory.brand_rules;
+  if (!Array.isArray(rules)) return [];
+  const entries: BrandRuleEntry[] = [];
+  for (const rule of rules) {
+    if (!isRecord(rule)) continue;
+    const text = typeof rule.text === "string" ? rule.text.trim() : "";
+    if (!text) continue;
+    entries.push({ text, created_at: stringOrNull(rule.created_at) });
+  }
+  return entries.slice(-limit).reverse();
+}
+
+export function collectTrendQueries(
+  memory: Record<string, unknown>,
+  limit = 2,
+): TrendResearchEntry[] {
+  const history = memory.trend_research;
+  if (!Array.isArray(history)) return [];
+  const entries: TrendResearchEntry[] = [];
+  for (const entry of history) {
+    if (!isRecord(entry)) continue;
+    const query = typeof entry.query === "string" ? entry.query.trim() : "";
+    if (!query) continue;
+    entries.push({ query, researched_at: stringOrNull(entry.researched_at) });
+  }
+  return entries.slice(-limit).reverse();
+}
+
+export function collectLatestInsights(
+  memory: Record<string, unknown>,
+  limit = 3,
+): Insight[] {
+  return collectInsights(memory)
+    .filter((insight) => insight.title !== BRAND_VOICE_TITLE)
+    .sort(
+      (a, b) => timestampMs(b.created_at) - timestampMs(a.created_at),
+    )
+    .slice(0, limit);
+}
+
 export function collectInsights(memory: Record<string, unknown>): Insight[] {
   const insights: Insight[] = [];
 
   const brandVoice = memory.brand_voice;
   if (typeof brandVoice === "string" && brandVoice.trim()) {
-    insights.push({ title: "Brand voice", detail: brandVoice });
+    insights.push({ title: BRAND_VOICE_TITLE, detail: brandVoice });
   }
 
   const historical = memory.historical_insights;
@@ -59,6 +126,7 @@ export function collectInsights(memory: Record<string, unknown>): Insight[] {
         insights.push({
           title: winner ? `A/B insight · ${winner}` : `A/B insight #${index + 1}`,
           detail,
+          created_at: stringOrNull(entry.concluded_at),
         });
       }
     });

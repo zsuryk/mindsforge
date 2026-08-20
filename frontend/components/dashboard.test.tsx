@@ -56,7 +56,12 @@ function makeActivity(overrides: Partial<MindActivity> = {}): MindActivity {
   };
 }
 
-function stubFetch(stats: DashboardStats, jobs: Job[], activity: MindActivity[] = []) {
+function stubFetch(
+  stats: DashboardStats,
+  jobs: Job[],
+  activity: MindActivity[] = [],
+  memory: Record<string, unknown> = {},
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL) => {
@@ -66,6 +71,9 @@ function stubFetch(stats: DashboardStats, jobs: Job[], activity: MindActivity[] 
       }
       if (url.includes("/dashboard/activity")) {
         return Promise.resolve(jsonResponse(activity));
+      }
+      if (url.includes("/agent/memory")) {
+        return Promise.resolve(jsonResponse({ agent_id: "agent-1", memory }));
       }
       return Promise.resolve(jsonResponse(jobs));
     }),
@@ -109,6 +117,7 @@ describe("DashboardPage", () => {
     const user = userEvent.setup();
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1", memory: {} }))
       .mockResolvedValueOnce(jsonResponse(makeStats()))
       .mockResolvedValueOnce(jsonResponse([]))
       .mockResolvedValueOnce(jsonResponse([]))
@@ -123,7 +132,7 @@ describe("DashboardPage", () => {
     await user.type(screen.getByLabelText(/video url/i), "https://example.com/new.mp4");
     await user.click(screen.getByRole("button", { name: /process/i }));
 
-    const post = fetchMock.mock.calls[3][1].body as FormData;
+    const post = fetchMock.mock.calls[4][1].body as FormData;
     expect(post.get("source_url")).toBe("https://example.com/new.mp4");
     expect(pushMock).toHaveBeenCalledWith("/jobs");
   });
@@ -132,6 +141,7 @@ describe("DashboardPage", () => {
     const user = userEvent.setup();
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1", memory: {} }))
       .mockResolvedValueOnce(jsonResponse(makeStats()))
       .mockResolvedValueOnce(jsonResponse([]))
       .mockResolvedValueOnce(jsonResponse([]))
@@ -174,9 +184,11 @@ describe("DashboardPage", () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1", memory: {} }))
       .mockResolvedValueOnce(jsonResponse(makeStats()))
       .mockResolvedValueOnce(jsonResponse([]))
       .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1", memory: {} }))
       .mockResolvedValueOnce(jsonResponse(makeStats({ total_clips: 7 })))
       .mockResolvedValueOnce(jsonResponse([makeJob()]))
       .mockResolvedValueOnce(jsonResponse([]));
@@ -201,6 +213,33 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByText(/the mind is idle/i)).toBeInTheDocument();
     expect(screen.getByText("Mind at Work")).toBeInTheDocument();
+  });
+
+  it("renders the persistence recap card with remembered memory", async () => {
+    stubFetch(makeStats(), [], [], {
+      brand_voice: "Bold and direct.",
+      brand_rules: [{ text: "never clickbait", created_at: "2026-08-19T10:00:00Z" }],
+      ab_test_history: [
+        {
+          winning_variant_id: "v2",
+          learned_insight: "question hooks win",
+          concluded_at: "2026-08-19T10:00:00Z",
+        },
+      ],
+      trend_research: [{ query: "hook retention", researched_at: "2026-08-19T10:00:00Z" }],
+    });
+
+    render(<DashboardPage />);
+
+    expect(await screen.findByText("What your Mind remembers")).toBeInTheDocument();
+    expect(screen.getByTestId("recap-brand-voice")).toHaveTextContent("Bold and direct.");
+    expect(screen.getAllByTestId("recap-brand-rule")[0]).toHaveTextContent("never clickbait");
+    expect(screen.getByTestId("recap-insight")).toHaveTextContent("question hooks win");
+    expect(screen.getAllByTestId("recap-trend")[0]).toHaveTextContent("hook retention");
+    expect(screen.getByRole("link", { name: /see full memory/i })).toHaveAttribute(
+      "href",
+      "/memory-inspector",
+    );
   });
 
   it("renders activity events with icons and relative times, newest highlighted", async () => {
@@ -251,9 +290,11 @@ describe("DashboardPage", () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1", memory: {} }))
       .mockResolvedValueOnce(jsonResponse(makeStats()))
       .mockResolvedValueOnce(jsonResponse([]))
       .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1", memory: {} }))
       .mockResolvedValueOnce(jsonResponse(makeStats()))
       .mockResolvedValueOnce(jsonResponse([]))
       .mockResolvedValueOnce(
