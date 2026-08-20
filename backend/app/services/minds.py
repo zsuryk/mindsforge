@@ -504,6 +504,22 @@ def post_chat_notification(text: str) -> None:
         raise MindsError(f"Message send failed with status {response.status_code}")
 
 
+def notify_mind(text: str) -> None:
+    """Tell the Mind about an outcome it did not witness, best-effort.
+
+    Posts ``text`` as a system-marked message into the chat thread so the Mind
+    learns experiment conclusions, experiment failures and ready adaptations
+    from its own conversation (the thread is the record). Any MindsError —
+    including an unconfigured builder — is logged and swallowed: a
+    notification must never fail an Experiment or Adaptation that already
+    succeeded (fire-and-forget by design, no reply waiting).
+    """
+    try:
+        post_chat_notification(text)
+    except MindsError as exc:
+        logger.warning("Mind notification not delivered: %s", exc)
+
+
 def fetch_chat_history(limit: int = 50) -> list[ChatMessage]:
     """Return the chat thread as role-annotated messages, oldest first.
 

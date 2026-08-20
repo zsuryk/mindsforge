@@ -11,6 +11,42 @@ from app.services.transcription import TranscriptSegment
 
 logger = logging.getLogger(__name__)
 
+# Feature-manifest keys in a fixed order, labelled for the chat notification's
+# brief summary so the Mind sees at a glance what a READY adaptation contains.
+_FEATURE_SUMMARY_LABELS: tuple[tuple[str, str], ...] = (
+    ("chapters", "chapters"),
+    ("tags", "tags"),
+    ("poll", "a poll"),
+    ("quiz", "a quiz"),
+    ("thumbnail_briefs", "thumbnail briefs"),
+    ("shorts_link", "a shorts link"),
+    ("platform_hooks", "platform hooks"),
+    ("overlay_spec", "overlays"),
+    ("caption_style", "captions"),
+    ("stickers", "stickers"),
+    ("pinned_comment", "a pinned comment"),
+    ("caption", "a caption"),
+    ("hashtags", "hashtags"),
+)
+
+
+def _feature_summary(features: dict[str, object] | None) -> str:
+    """A brief human summary of the feature manifest for the notification."""
+    if not features:
+        return "feature manifest"
+    labels: list[str] = []
+    for key, label in _FEATURE_SUMMARY_LABELS:
+        value = features.get(key)
+        # An empty manifest entry means that feature was not produced, so it
+        # must not appear in the summary ("0 thumbnail briefs" is a lie).
+        if not value:
+            continue
+        if key == "thumbnail_briefs" and isinstance(value, list):
+            labels.append(f"{len(value)} {label}")
+        else:
+            labels.append(label)
+    return ", ".join(labels) if labels else "feature manifest"
+
 
 def _memory_context(settings) -> str | None:
     """Best-effort memory context: a fetch failure degrades to None rather
@@ -130,6 +166,10 @@ def generate_adaptation(adaptation_id: str) -> None:
             # Memory history is appended only after the row is committed READY,
             # so the record never claims success for a still-GENERATING row.
             _persist_adaptation_history(adaptation)
+            minds.notify_mind(
+                f"Adaptation ready: '{clip.title}' for {adaptation.platform}/"
+                f"{adaptation.surface.value} — {_feature_summary(adaptation.features)}."
+            )
             logger.info(
                 "Adaptation %s ready: %s/%s",
                 adaptation.id,

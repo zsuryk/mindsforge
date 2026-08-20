@@ -357,6 +357,7 @@ def test_success_appends_adaptation_history_to_minds_memory(
         lambda agent_id, key, value: captured.update(agent_id=agent_id, key=key, value=value)
         or True,
     )
+    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
     adaptation_id = res.json()["id"]
@@ -604,6 +605,7 @@ def test_memory_history_written_only_after_row_is_ready(
 
     monkeypatch.setattr(minds, "fetch_memory", capturing_fetch)
     monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
+    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
     adaptation_id = res.json()["id"]
@@ -666,3 +668,99 @@ def test_adaptation_memory_context_has_no_trend_block_without_trend_data(
 
     assert context is not None
     assert "Trending research" not in context
+
+
+def test_ready_adaptation_posts_notification_with_feature_summary(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    _minds_env: None,
+) -> None:
+    test_client, tmp_path = client
+    stub_rendering(monkeypatch)
+    stub_features(
+        monkeypatch,
+        features={
+            "overlay_spec": [{"text": "boom", "placement": "center", "style": "bold"}],
+            "caption_style": "bold white",
+            "stickers": [{"emoji": "🔥", "placement": "top-right"}],
+            "pinned_comment": "First!",
+        },
+    )
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+    notifications: list[str] = []
+    monkeypatch.setattr(minds, "notify_mind", notifications.append)
+
+    res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
+    adaptation_id = res.json()["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
+    assert detail["status"] == "READY"
+
+    assert len(notifications) == 1
+    text = notifications[0]
+    assert text.startswith("Adaptation ready: 'Adaptation clip' for tiktok/POST — ")
+    assert "overlays" in text
+    assert "captions" in text
+    assert "stickers" in text
+    assert "pinned comment" in text
+
+
+def test_ready_adaptation_notification_includes_thumbnail_count(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    _minds_env: None,
+) -> None:
+    test_client, tmp_path = client
+    stub_rendering(monkeypatch)
+    stub_features(
+        monkeypatch,
+        features={
+            "thumbnail_briefs": [
+                {"frame_timestamp": 3.0, "overlay_text": f"thumb {i}"} for i in range(3)
+            ],
+            "platform_hooks": ["hook"],
+        },
+    )
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+    notifications: list[str] = []
+    monkeypatch.setattr(minds, "notify_mind", notifications.append)
+
+    res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/youtube/SHORTS")
+    adaptation_id = res.json()["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
+    assert detail["status"] == "READY"
+
+    assert len(notifications) == 1
+    assert "3 thumbnail briefs, platform hooks." in notifications[0]
+
+
+def test_notification_failure_leaves_adaptation_ready(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    stub_rendering(monkeypatch)
+    stub_features(
+        monkeypatch,
+        features={
+            "overlay_spec": [{"text": "boom", "placement": "center", "style": "bold"}],
+            "caption_style": "bold white",
+            "stickers": [{"emoji": "🔥", "placement": "top-right"}],
+            "pinned_comment": "First!",
+        },
+    )
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+    monkeypatch.setattr(
+        minds,
+        "post_chat_notification",
+        lambda text: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+    )
+
+    res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
+    adaptation_id = res.json()["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
+
+    assert detail["status"] == "READY"
+    assert detail["error_message"] is None

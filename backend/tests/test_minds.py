@@ -896,3 +896,66 @@ def test_network_errors_are_wrapped_as_minds_errors(
     )
     with pytest.raises(minds.MindsError, match="timed out"):
         minds._post("/v1/messaging/message", {})
+
+
+def test_notify_mind_posts_marked_message_to_chat_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    posts: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_post(path, payload):
+        posts.append((path, payload))
+        return FakeResponse({}, 200)
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse([{"senderType": 1, "messageText": "old row"}], 200)
+        return FakeResponse([], 200)
+
+    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    minds.notify_mind("Experiment concluded on clip 'My clip'.")
+
+    messages = [payload for path, payload in posts if path == "/v1/messaging/message"]
+    assert len(messages) == 1
+    assert messages[0]["alias"] == minds.CHAT_ALIAS
+    assert messages[0]["messageText"] == (
+        f"{minds.SYSTEM_MARKER}Experiment concluded on clip 'My clip'."
+    )
+    assert all(payload.get("alias") == minds.CHAT_ALIAS for _, payload in posts)
+
+
+def test_notify_mind_swallows_unconfigured_minds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
+    monkeypatch.setenv("MINDS_AGENT_ID", "")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    captured: list[str] = []
+    monkeypatch.setattr(minds.logger, "warning", lambda message, *args: captured.append(message))
+
+    assert minds.notify_mind("hello") is None
+    assert any("Mind notification not delivered" in message for message in captured)
+
+
+def test_notify_mind_swallows_message_send_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds, "_post", lambda path, payload: FakeResponse({}, 500)
+    )
+    monkeypatch.setattr(
+        minds,
+        "_get",
+        lambda path, params=None: FakeResponse(
+            [{"senderType": 1, "messageText": "old row"}], 200
+        ),
+    )
+
+    assert minds.notify_mind("hello") is None

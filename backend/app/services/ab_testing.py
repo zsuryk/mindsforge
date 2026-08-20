@@ -51,6 +51,9 @@ def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> Non
     experiment.concluded_at = datetime.now(timezone.utc)
     db.commit()
     logger.warning("Experiment %s failed: %s", experiment.id, experiment.error_message)
+    minds.notify_mind(
+        f"Experiment {experiment.id} failed: {experiment.error_message}."
+    )
 
 
 def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
@@ -88,6 +91,11 @@ def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
     db.commit()
     logger.info(
         "Experiment %s concluded: winner %s", experiment.id, verdict.winning_variant_id
+    )
+    minds.notify_mind(
+        f"Experiment concluded on clip '{clip.title}' ({experiment.platform}). "
+        f"Winner: {verdict.winning_variant_id}. Learned insight: "
+        f"'{verdict.reasoning}'."
     )
 
 
