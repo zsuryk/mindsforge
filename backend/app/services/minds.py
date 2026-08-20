@@ -61,6 +61,7 @@ MEMORY_CONTEXT_KEYS = (
     "ab_test_history",
     "adaptation_history",
     "trend_research",
+    "brand_rules",
 )
 MEMORY_CONTEXT_VALUE_LIMIT = 2000
 

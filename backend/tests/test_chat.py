@@ -253,6 +253,66 @@ def test_api_send_message_returns_reply_and_empty_rules(
     assert all(payload.get("alias") == minds.CHAT_ALIAS for _, payload in posts)
 
 
+def test_api_send_message_rules_field_populated_by_sidecar_seam(
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ticket-17 seam: when the sidecar detects rules, they come back on
+    the response for the "saved to your Mind" chip."""
+    _configure_minds(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    posts: list[tuple[str, dict[str, Any]]] = []
+
+    class Completions:
+        def create(self, model, messages, **kwargs):
+            class Message:
+                content = '{"rules": ["post shorts daily"]}'
+
+            class Choice:
+                message = Message()
+
+            class Response:
+                def __init__(self) -> None:
+                    self.choices = [Choice()]
+
+            return Response()
+
+    class Chat:
+        completions = Completions()
+
+    class FakeGroq:
+        def __init__(self, api_key: str) -> None:
+            self.api_key = api_key
+
+        chat = Chat()
+
+    from app.services import rules
+
+    monkeypatch.setattr(rules, "Groq", FakeGroq)
+
+    def fake_post(path, payload):
+        posts.append((path, payload))
+        return FakeResponse({}, 200)
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse([], 200)
+        return FakeResponse([{"senderType": 0, "messageText": "hi"}], 200)
+
+    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    test_client, _ = client
+    response = test_client.post(
+        "/api/v1/chat/messages", json={"message": "post shorts daily"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rules"] == ["post shorts daily"]
+
+
 def test_api_send_message_502_on_timeout(
     client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:

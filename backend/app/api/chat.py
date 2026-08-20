@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.chat import (
@@ -7,7 +9,9 @@ from app.schemas.chat import (
     TrendResearchIn,
     TrendResearchOut,
 )
-from app.services import minds, trends
+from app.services import minds, rules, trends
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -36,8 +40,18 @@ def send_chat_message(payload: ChatSendIn) -> ChatSendOut:
         reply = minds.send_chat_message(payload.message)
     except minds.MindsError as exc:
         _raise_upstream_error(exc)
-    # `rules` is the ticket-17 seam: brand rules extracted from this message.
-    return ChatSendOut(reply=reply, rules=[])
+    # Brand-rule sidecar (non-blocking): a fast Groq call inspects the user
+    # message for explicit creator preferences and appends them to memory so
+    # every generation prompt carries the rules. A failure never blocks the
+    # chat — the Mind itself read the statement in the thread regardless.
+    detected: list[str] = []
+    try:
+        extracted = rules.extract_and_persist_brand_rules(payload.message)
+    except rules.RuleExtractionError as exc:
+        logger.warning("Brand-rule extraction skipped: %s", exc)
+    else:
+        detected = [rule.text for rule in extracted]
+    return ChatSendOut(reply=reply, rules=detected)
 
 
 @router.get("/chat/history", response_model=ChatHistoryOut)
