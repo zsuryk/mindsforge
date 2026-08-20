@@ -7,7 +7,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.services import minds
+from app.services import activity, minds
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,11 @@ def research_trends(query: str, platform: str | None = None) -> list[TrendResult
         raise minds.MindsConfigError("MINDS_AGENT_ID is not configured")
     _persist_trend_research(agent_id, query, platform, results)
     minds.post_chat_notification(_notification_text(query, results))
+    activity.log(
+        "trend-researched",
+        f"Researched '{query}' — {len(results)} results",
+        detail={"platform": platform},
+    )
     return results
 
 

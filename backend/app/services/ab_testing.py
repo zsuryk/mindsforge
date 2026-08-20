@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.experiment import AbExperiment, AbExperimentStatus
-from app.services import minds
+from app.services import activity, minds
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,14 @@ def _latent_ctr(variant_id: str) -> float:
     return LATENT_CTR_MIN + seeded.random() * (LATENT_CTR_MAX - LATENT_CTR_MIN)
 
 
-def _simulate_sweep(variant: dict[str, object], rng: random.Random) -> None:
+def _simulate_sweep(variant: dict[str, object], rng: random.Random) -> int:
     """Accumulate one sweep of simulated traffic onto a variant dict.
 
     New views land uniformly in a small band; clicks follow the variant's
     latent CTR so each variant converges toward its true rate. Cumulative
     clicks are stored alongside views so the reported `ctr` percentage is
-    an exact running total, not a reconstruction.
+    an exact running total, not a reconstruction. Returns the number of new
+    views simulated, for the sweep's activity log.
     """
     new_views = rng.randint(VIEWS_PER_SWEEP_MIN, VIEWS_PER_SWEEP_MAX)
     views = int(variant.get("views") or 0) + new_views
@@ -42,6 +43,7 @@ def _simulate_sweep(variant: dict[str, object], rng: random.Random) -> None:
     variant["views"] = views
     variant["clicks"] = clicks
     variant["ctr"] = round(clicks / views * 100.0, 2) if views else 0.0
+    return new_views
 
 
 def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> None:
@@ -51,6 +53,11 @@ def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> Non
     experiment.concluded_at = datetime.now(timezone.utc)
     db.commit()
     logger.warning("Experiment %s failed: %s", experiment.id, experiment.error_message)
+    activity.log(
+        "experiment-failed",
+        f"Experiment {experiment.id} failed: {experiment.error_message}",
+        ref_id=experiment.id,
+    )
     minds.notify_mind(
         f"Experiment {experiment.id} failed: {experiment.error_message}."
     )
@@ -91,6 +98,12 @@ def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
     db.commit()
     logger.info(
         "Experiment %s concluded: winner %s", experiment.id, verdict.winning_variant_id
+    )
+    activity.log(
+        "experiment-concluded",
+        f"Experiment concluded on '{clip.title}' — winner {verdict.winning_variant_id}",
+        detail={"insight": verdict.reasoning},
+        ref_id=experiment.id,
     )
     minds.notify_mind(
         f"Experiment concluded on clip '{clip.title}' ({experiment.platform}). "
@@ -153,6 +166,8 @@ def refresh_active_experiments(
     rng = rng or random
     threshold = view_threshold or get_settings().AB_TEST_VIEW_THRESHOLD
     concluded: list[AbExperiment] = []
+    swept_variants = 0
+    new_views_total = 0
     with get_session_factory()() as db:
         experiments = db.scalars(
             select(AbExperiment).where(
@@ -162,7 +177,8 @@ def refresh_active_experiments(
         for experiment in experiments:
             variants = [dict(variant) for variant in (experiment.variants or [])]
             for variant in variants:
-                _simulate_sweep(variant, rng)
+                new_views_total += _simulate_sweep(variant, rng)
+                swept_variants += 1
             experiment.variants = variants
             db.commit()
             total_views = sum(int(v.get("views") or 0) for v in variants)
@@ -173,4 +189,10 @@ def refresh_active_experiments(
                 except Exception as exc:  # noqa: BLE001 - one broken experiment must not abort the sweep
                     _fail_experiment(db, experiment, exc)
                 concluded.append(experiment)
+    # One row per sweep, even with zero experiments: an empty heartbeat is
+    # still proof the worker runs.
+    activity.log(
+        "experiment-sweep",
+        f"Simulated sweep: +{new_views_total} views across {swept_variants} variants",
+    )
     return concluded

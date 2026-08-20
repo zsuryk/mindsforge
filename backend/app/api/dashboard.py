@@ -3,9 +3,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
+from app.models.activity import MindActivity
 from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
-from app.schemas.dashboard import DashboardStats
+from app.schemas.dashboard import DashboardStats, MindActivityOut
 
 router = APIRouter()
 
@@ -38,3 +39,17 @@ def get_dashboard_stats(db: Session = Depends(get_db)) -> DashboardStats:
         avg_virality=round(avg_virality, 1) if avg_virality is not None else None,
         total_insights=total_insights,
     )
+
+
+@router.get("/dashboard/activity", response_model=list[MindActivityOut])
+def get_dashboard_activity(
+    limit: int = 20, db: Session = Depends(get_db)
+) -> list[MindActivityOut]:
+    """Return the Mind's recent work log, newest first."""
+    bounded_limit = max(1, min(limit, 100))
+    rows = db.scalars(
+        select(MindActivity)
+        .order_by(MindActivity.created_at.desc(), MindActivity.id.desc())
+        .limit(bounded_limit)
+    ).all()
+    return rows

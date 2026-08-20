@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.memory import MemoryEntry
+from app.services import activity
 
 logger = logging.getLogger(__name__)
 
@@ -502,6 +503,7 @@ def post_chat_notification(text: str) -> None:
     )
     if response.status_code != 200:
         raise MindsError(f"Message send failed with status {response.status_code}")
+    activity.log("mind-notified", text, detail={"text": text})
 
 
 def notify_mind(text: str) -> None:

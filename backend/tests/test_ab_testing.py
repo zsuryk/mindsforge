@@ -5,8 +5,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.db.base import get_session_factory
+from app.models.activity import MindActivity
 from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
 from app.models.job import Job
@@ -841,3 +843,118 @@ def test_notification_failure_does_not_change_failed_experiment(
         stored = db.get(AbExperiment, experiment.id)
         assert stored.status == AbExperimentStatus.FAILED
         assert "builder api down" in stored.error_message
+
+
+def _activity_rows() -> list[MindActivity]:
+    with get_session_factory()() as db:
+        return db.scalars(
+            select(MindActivity).order_by(MindActivity.created_at.asc())
+        ).all()
+
+
+def test_sweep_logs_exactly_one_activity_row_when_no_experiments(
+    client: tuple[TestClient, Path],
+) -> None:
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    rows = _activity_rows()
+    assert len(rows) == 1
+    assert rows[0].event_type == "experiment-sweep"
+    assert rows[0].label.startswith("Simulated sweep: +0 views across 0 variants")
+
+
+def test_sweep_logs_one_row_for_variant_traffic(
+    client: tuple[TestClient, Path],
+) -> None:
+    _, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 0, "clicks": 0},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 0, "clicks": 0},
+            ],
+        )
+
+    ab_testing.refresh_active_experiments(
+        rng=random.Random(3), view_threshold=1000
+    )
+
+    rows = [row for row in _activity_rows() if row.event_type == "experiment-sweep"]
+    assert len(rows) == 1
+    label = rows[0].label
+    assert "views across 2 variants" in label
+    assert label.startswith("Simulated sweep: +")
+
+
+def test_conclusion_logs_activity_row_with_winner(
+    client: tuple[TestClient, Path],
+    _minds_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
+    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
+
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    concluded = [
+        row
+        for row in _activity_rows()
+        if row.event_type == "experiment-concluded"
+    ]
+    assert len(concluded) == 1
+    assert concluded[0].ref_id == experiment.id
+    assert concluded[0].label == (
+        "Experiment concluded on 'My clip' — winner v1"
+    )
+    assert concluded[0].detail == {"insight": "A won; reuse its hook style."}
+
+
+def test_failed_experiment_logs_activity_row(
+    client: tuple[TestClient, Path],
+    _minds_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    monkeypatch.setattr(
+        minds,
+        "decide_experiment_winner",
+        lambda platform, variants, transcript, memory_context=None: (
+            _ for _ in ()
+        ).throw(minds.MindsError("builder api down")),
+    )
+    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
+
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    failed = [row for row in _activity_rows() if row.event_type == "experiment-failed"]
+    assert len(failed) == 1
+    assert failed[0].ref_id == experiment.id
+    assert failed[0].label == f"Experiment {experiment.id} failed: builder api down"

@@ -10,8 +10,8 @@ from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.job import Job, JobStatus
+from app.services import activity, media, minds, transcription
 from app.services import clips as clips_service
-from app.services import media, minds, transcription
 from app.services.transcription import TranscriptSegment
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,11 @@ def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
         clip.virality_score = metadata.virality_score
         clip.suggested_hooks = metadata.model_dump()
         logger.info("Job %s: clip %s scored %d/100", job.id, clip.id, clip.virality_score)
+        activity.log(
+            "clip-scored",
+            f"Scored clip '{clip.title}' — virality {clip.virality_score}/100",
+            ref_id=clip.id,
+        )
 
 
 def run_pipeline(job_id: str) -> None:

@@ -5,7 +5,7 @@ from uuid import uuid4
 from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import AdaptationStatus, ClipAdaptation
-from app.services import minds, trends
+from app.services import activity, minds, trends
 from app.services.adaptation_assets import render_adaptation_assets
 from app.services.transcription import TranscriptSegment
 
@@ -176,8 +176,20 @@ def generate_adaptation(adaptation_id: str) -> None:
                 adaptation.platform,
                 adaptation.surface.value,
             )
+            activity.log(
+                "adaptation-ready",
+                f"Adaptation ready: '{clip.title}' for "
+                f"{adaptation.platform}/{adaptation.surface.value}",
+                ref_id=adaptation.id,
+            )
         except Exception as exc:  # noqa: BLE001 - any failure fails the adaptation closed
             adaptation.status = AdaptationStatus.FAILED
             adaptation.error_message = str(exc)[:2048]
             db.commit()
             logger.warning("Adaptation %s failed: %s", adaptation.id, adaptation.error_message)
+            activity.log(
+                "adaptation-failed",
+                f"Adaptation failed: '{clip.title if clip else adaptation.id}' — "
+                f"{adaptation.error_message}",
+                ref_id=adaptation.id,
+            )

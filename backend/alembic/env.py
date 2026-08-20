@@ -3,12 +3,11 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-
 from app.core.config import BACKEND_DIR, get_settings
 from app.db.base import Base
 
 # Register every model so autogenerate sees the full metadata.
-from app.models import adaptation, clip, experiment, job, memory  # noqa: F401
+from app.models import activity, adaptation, clip, experiment, job, memory  # noqa: F401
 
 config = context.config
 

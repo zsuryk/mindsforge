@@ -6,7 +6,7 @@ from groq import Groq
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.services import minds
+from app.services import activity, minds
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,12 @@ def persist_brand_rules(agent_id: str, rules: list[BrandRule]) -> None:
     minds.update_memory(
         agent_id, BRAND_RULES_KEY, history[-BRAND_RULES_MAX_ENTRIES:]
     )
+    for rule in rules:
+        activity.log(
+            "rule-saved",
+            f"'{rule.text}'",
+            detail={"platform": rule.platform},
+        )
 
 
 def extract_and_persist_brand_rules(

@@ -345,6 +345,25 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   return res.json();
 }
 
+export type MindActivity = {
+  id: string;
+  event_type: string;
+  label: string;
+  detail: Record<string, unknown> | null;
+  ref_id: string | null;
+  created_at: string;
+};
+
+export async function fetchMindActivity(limit = 20): Promise<MindActivity[]> {
+  const res = await fetch(`${API_URL}/dashboard/activity?limit=${limit}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
 export type ChatRole = "user" | "mind" | "system";
 
 export type ChatMessage = {

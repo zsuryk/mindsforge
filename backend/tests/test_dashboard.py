@@ -1,12 +1,15 @@
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
 from app.models.job import Job
+from app.services import ab_testing, minds
+from app.services.pipeline import _score_clips
 
 
 def make_clip(db, *, virality_score: int | None = None) -> Clip:
@@ -98,3 +101,44 @@ def test_dashboard_stats_avg_virality_is_null_without_scored_clips(
     body = test_client.get("/api/v1/dashboard/stats").json()
     assert body["total_clips"] == 1
     assert body["avg_virality"] is None
+
+
+def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, _ = client
+    with get_session_factory()() as db:
+        clip = make_clip(db)
+
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: None)
+    monkeypatch.setattr(
+        minds,
+        "generate_clip_metadata",
+        lambda transcript, duration_seconds=None, memory_context=None, **kwargs: minds.ClipMetadata(
+            virality_score=82,
+            suggested_titles=["Title A"],
+            platform_hooks={"youtube_shorts": ["s"], "tiktok": ["t"], "x": ["x"]},
+        ),
+    )
+
+    # A simulated sweep with no active experiments still logs its heartbeat.
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    # A scoring pass logs one row per scored clip.
+    with get_session_factory()() as db:
+        job = db.get(Job, clip.job_id)
+        assert job is not None
+        _score_clips(db, job, "test-alias")
+
+    body = test_client.get("/api/v1/dashboard/activity?limit=20").json()
+
+    event_types = [row["event_type"] for row in body]
+    assert "experiment-sweep" in event_types
+    assert event_types.count("experiment-sweep") == 1
+    assert event_types.count("clip-scored") == 1
+    scored = next(row for row in body if row["event_type"] == "clip-scored")
+    assert scored["label"] == "Scored clip 'Clip' — virality 82/100"
+    assert scored["ref_id"] == clip.id
