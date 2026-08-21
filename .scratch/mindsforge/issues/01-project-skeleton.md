@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done (09e6057)
 
 - [x] Backend app entry point loads all env vars via settings, applies CORS middleware, mounts routers, and exposes a health/status route
 - [x] Frontend project initialised with TypeScript strict mode, Tailwind, and the app shell + sidebar navigation

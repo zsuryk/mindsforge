@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 — Transcription pipeline
 
-**Status:** ready-for-agent
+**Status:** done (12d4e62)
 
 - [ ] Transcript segments split into candidate clips (short-form duration bounds, sentence-boundary aware)
 - [ ] Each candidate is cut into an MP4 (re-encoded H.264) and gets a thumbnail frame extraction

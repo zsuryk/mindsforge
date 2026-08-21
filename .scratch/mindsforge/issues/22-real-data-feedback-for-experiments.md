@@ -8,7 +8,7 @@ via the checklist can be A/B-tested on reality, not simulation.
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** done (8e557ea)
 
 ## Problem Statement
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Project skeleton
 
-**Status:** ready-for-agent
+**Status:** done (4b70326)
 
 - [x] Jobs table exists (SQLAlchemy model + table creation) with all fields from the spec
 - [x] Creating a job persists it and returns job id + status; duplicate/submission errors are handled gracefully

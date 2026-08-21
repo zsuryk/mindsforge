@@ -10,7 +10,7 @@ generation so hooks/tags/captions follow current trends.
 **Blocked by:** 15 (uses `POST /chat/messages`, the `SYSTEM_MARKER`
 convention, and the chat thread)
 
-**Status:** ready-for-agent
+**Status:** done (1eae18b)
 
 ## Problem Statement
 

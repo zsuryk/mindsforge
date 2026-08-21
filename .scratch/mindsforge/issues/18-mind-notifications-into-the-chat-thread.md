@@ -9,7 +9,7 @@ experiments teach me?".
 
 **Blocked by:** 15 (uses `CHAT_ALIAS` and the `SYSTEM_MARKER` convention)
 
-**Status:** ready-for-agent
+**Status:** done (9289de7)
 
 ## Problem Statement
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** none (extends shipped ticket 07)
 
-**Status:** ready-for-agent
+**Status:** done (a49a3d6)
 
 - [ ] `minds.decide_experiment_winner(platform, variants, transcript, memory_context)` — structured prompt + `_parse_*` verdict handling, mirroring `generate_clip_metadata` conventions (MindsError on any failure)
 - [ ] Winner id validated against the experiment's variants; reasoning non-empty

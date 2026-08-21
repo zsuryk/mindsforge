@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 — Clip extraction, 05 — Minds scoring and clip studio
 
-**Status:** ready-for-agent
+**Status:** done (347ef54)
 
 - [ ] Experiment model + start endpoint persist a multi-variant experiment with thumbnail paths; launch modal from ticket 05 works end-to-end
 - [ ] Active experiments endpoint returns active + recently concluded experiments

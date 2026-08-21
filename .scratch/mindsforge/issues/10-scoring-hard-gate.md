@@ -4,7 +4,7 @@
 
 **Blocked by:** none (extends shipped tickets 04/05)
 
-**Status:** ready-for-agent
+**Status:** done (06051dc)
 
 - [ ] Pre-flight check in `pipeline._score_clips` (or before it) raising a clear error when Minds is unconfigured
 - [ ] Per-clip MindsError propagates → job FAILED with message, `db.rollback()` path already exists

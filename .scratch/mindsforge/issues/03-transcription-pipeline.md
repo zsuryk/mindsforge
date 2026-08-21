@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — Job ingestion
 
-**Status:** ready-for-agent
+**Status:** done (ea57ca1)
 
 - [ ] A submitted job starts processing automatically in the background and its status transitions through DOWNLOADING and TRANSCRIBING
 - [ ] URL jobs download via yt-dlp into raw storage; upload jobs read the local file

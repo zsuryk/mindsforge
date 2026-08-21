@@ -8,7 +8,7 @@ worker becomes a visible 24/7 heartbeat.
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** done (ade5046)
 
 ## Problem Statement
 

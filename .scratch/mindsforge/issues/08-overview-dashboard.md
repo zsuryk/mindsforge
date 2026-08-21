@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 — Clip extraction, 06 — Memory inspector, 07 — Autonomous A/B testing
 
-**Status:** ready-for-agent
+**Status:** done (45e4a53)
 
 - [ ] Dashboard header + system status badge + URL input bar that kicks off a job
 - [ ] Four metric cards read from live aggregates; counts stay correct as jobs/clips/experiments change

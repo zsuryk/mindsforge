@@ -9,7 +9,7 @@ generation prompt already receives.
 
 **Blocked by:** 15 (hooks into `POST /chat/messages`)
 
-**Status:** ready-for-agent
+**Status:** done (9ab7352)
 
 ## Problem Statement
 

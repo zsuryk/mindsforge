@@ -9,7 +9,7 @@ in the README.
 **Blocked by:** none (renders whatever memory exists; richer once tickets
 16/17 land)
 
-**Status:** ready-for-agent
+**Status:** done (f3012b9)
 
 ## Problem Statement
 

@@ -8,7 +8,7 @@ replies always surface.
 
 **Blocked by:** 15, 16, 17 (backend messaging, trends, rules)
 
-**Status:** ready-for-agent
+**Status:** done (90c5298)
 
 ## Problem Statement
 

@@ -7,7 +7,7 @@ its originating ticket already promised — no new features.
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** done (e1ec7eb + follow-up fixes)
 
 ## Problem Statement
 

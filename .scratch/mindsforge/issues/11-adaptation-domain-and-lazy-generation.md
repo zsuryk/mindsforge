@@ -11,7 +11,7 @@ Prompt includes creator memory context; on success append an `adaptation_history
 
 **Blocked by:** 10 — Scoring hard gate
 
-**Status:** ready-for-agent
+**Status:** done (cbf3c81)
 
 - [ ] `Platform`/`Surface` vocabulary in schemas (platform strings stay `youtube|tiktok|x`; `youtube` gets two surfaces)
 - [ ] `clip_adaptations` model + Alembic migration + API: list, generate (202 + background task), get-by-id

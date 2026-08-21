@@ -9,7 +9,7 @@ across sessions, so no app-side chat storage exists.
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** done (413f58c)
 
 ## Problem Statement
 
