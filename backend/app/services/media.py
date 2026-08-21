@@ -36,6 +36,24 @@ def _ffmpeg_bin() -> Path:
     raise MediaError(f"FFmpeg binary not found: {configured}")
 
 
+def fetch_video_title(url: str) -> str | None:
+    """Extract the video title from a URL without downloading."""
+    import yt_dlp
+
+    opts = {
+        "skip_download": True,
+        "quiet": True,
+        "no_warnings": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return info.get("title")
+    except Exception:
+        logger.warning("Could not extract title for %s", url)
+        return None
+
+
 def download_video(url: str, target_dir: Path) -> Path:
     """Download a source URL into target_dir and return the media file path."""
     import yt_dlp
@@ -98,11 +116,14 @@ def _run_ffmpeg(cmd: list[str], action: str, source: Path, dest: Path) -> Path:
 
 
 def cut_clip(source: Path, dest: Path, start: float, end: float) -> Path:
-    """Cut [start, end] from a media file into a re-encoded H.264 MP4.
+    """Cut [start, end] from a media file via lossless stream copy.
 
-    Uses fast-seek (-ss before -i). Optional stream maps allow audio-only
-    sources to produce playable clips without a video stream.
+    Uses fast-seek (-ss before -i) with ``-c copy`` so no re-encoding
+    occurs. Cuts land on the nearest preceding keyframe, making this
+    near-instant regardless of clip duration. Start/end points may be
+    a few frames off due to keyframe alignment.
     """
+    duration = max(0.0, end - start)
     cmd = [
         str(_ffmpeg_bin()),
         "-y",
@@ -112,19 +133,13 @@ def cut_clip(source: Path, dest: Path, start: float, end: float) -> Path:
         "-i",
         str(source),
         "-t",
-        f"{max(0.0, end - start):.3f}",
+        f"{duration:.3f}",
         "-map",
         "0:v:0?",
         "-map",
         "0:a:0?",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
+        "-c",
+        "copy",
         "-movflags",
         "+faststart",
         "-loglevel",

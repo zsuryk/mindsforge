@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
@@ -37,6 +38,27 @@ def test_submit_job_by_url_returns_202_and_persists(
     assert job["error_message"] is None
     assert job["created_at"]
     assert job["updated_at"]
+
+
+def test_submit_url_without_title_fetches_video_title(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, _ = client
+    monkeypatch.setattr(
+        "app.api.jobs.fetch_video_title",
+        lambda url: "Never Gonna Give You Up",
+    )
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+    )
+
+    assert res.status_code == 202
+    job_id = res.json()["job_id"]
+    detail = test_client.get(f"/api/v1/jobs/{job_id}")
+    assert detail.json()["title"] == "Never Gonna Give You Up"
 
 
 def test_submit_job_with_title_uses_provided_title(client: tuple[TestClient, Path]) -> None:

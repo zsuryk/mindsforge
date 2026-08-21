@@ -18,6 +18,7 @@ from app.core.config import get_settings
 from app.db.base import get_db
 from app.models.job import IN_PROGRESS_STATUSES, Job, JobStatus
 from app.schemas.job import JobCreated, JobOut
+from app.services.media import fetch_video_title
 from app.services.pipeline import run_pipeline
 
 router = APIRouter()
@@ -69,7 +70,7 @@ def process_job(
                 detail=DUPLICATE_MESSAGE,
             )
         job.source_url = source_url
-        job.title = title or source_url
+        job.title = title or fetch_video_title(source_url) or source_url
     else:
         assert file is not None
         original_name = Path(file.filename or "upload").name
