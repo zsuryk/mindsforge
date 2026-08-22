@@ -362,20 +362,11 @@ def test_adaptation_read_prompt_carries_brand_rules(
     _configure_env(monkeypatch)
     monkeypatch.setattr(
         minds,
-        "fetch_memory",
-        lambda agent_id: {
-            "brand_rules": [
-                {
-                    "text": "never clickbait",
-                    "platform": None,
-                    "created_at": "2026-01-01T00:00:00+00:00",
-                    "source": "chat",
-                }
-            ]
-        },
+        "build_chat_context",
+        lambda: "brand_rules: [{\"text\": \"never clickbait\", \"platform\": null}]",
     )
 
-    context = adaptations._memory_context(get_settings())
+    context = adaptations._chat_context(get_settings())
 
     assert context is not None
     assert "brand_rules" in context

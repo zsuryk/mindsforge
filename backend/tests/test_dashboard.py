@@ -117,7 +117,7 @@ def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
     monkeypatch.setattr(
         minds,
         "generate_clip_metadata",
-        lambda transcript, duration_seconds=None, memory_context=None, **kwargs: minds.ClipMetadata(
+        lambda transcript, duration_seconds=None, chat_context=None, **kwargs: minds.ClipMetadata(
             virality_score=82,
             suggested_titles=["Title A"],
             platform_hooks={"youtube_shorts": ["s"], "tiktok": ["t"], "x": ["x"]},

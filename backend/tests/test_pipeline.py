@@ -28,7 +28,7 @@ def _stub_minds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         minds,
         "generate_clip_metadata",
-        lambda transcript, duration_seconds=None, memory_context=None, **kwargs: minds.ClipMetadata(
+        lambda transcript, duration_seconds=None, chat_context=None, **kwargs: minds.ClipMetadata(
             virality_score=80,
             suggested_titles=["Title A", "Title B"],
             platform_hooks={"youtube_shorts": ["s"], "tiktok": ["t"], "x": ["x"]},
@@ -357,7 +357,7 @@ def test_scoring_minds_error_fails_job(
     _enable_pipeline(monkeypatch)
     _stub_pipeline_stages(monkeypatch, tmp_path)
 
-    def failing_metadata(transcript, duration_seconds=None, memory_context=None, **kwargs):
+    def failing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):
         raise minds.MindsError("builder api down")
 
     monkeypatch.setattr(minds, "generate_clip_metadata", failing_metadata)
@@ -390,8 +390,8 @@ def test_memory_fetch_failure_still_scores_without_context(
         lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
     )
 
-    def capturing_metadata(transcript, duration_seconds=None, memory_context=None, **kwargs):
-        contexts.append(memory_context)
+    def capturing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):
+        contexts.append(chat_context)
         return minds.ClipMetadata(
             virality_score=70,
             suggested_titles=["A"],
@@ -422,7 +422,7 @@ def test_each_pipeline_run_uses_fresh_conversation_alias(
     _stub_pipeline_stages(monkeypatch, tmp_path)
     aliases: list[str] = []
 
-    def capturing_metadata(transcript, duration_seconds=None, memory_context=None, **kwargs):
+    def capturing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):
         aliases.append(kwargs.get("conversation_alias"))
         return minds.ClipMetadata(
             virality_score=70,

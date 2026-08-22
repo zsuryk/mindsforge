@@ -375,7 +375,7 @@ def test_generate_clip_metadata_parses_verdict(
     assert "21.5s" in captured["prompt"]
 
 
-def test_generate_clip_metadata_includes_memory_context(
+def test_generate_clip_metadata_includes_chat_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
@@ -391,7 +391,7 @@ def test_generate_clip_metadata_includes_memory_context(
     )
 
     minds.generate_clip_metadata(
-        "text", memory_context='brand_voice: "bold"\nhistorical_insights: []'
+        "text", chat_context='brand_voice: "bold"\nhistorical_insights: []'
     )
 
     assert "brand_voice" in captured["prompt"]
@@ -598,7 +598,7 @@ def test_decide_experiment_winner_parses_verdict(
         "youtube_shorts",
         VARIANTS,
         "the clip transcript",
-        memory_context='brand_voice: "bold"',
+        chat_context='brand_voice: "bold"',
     )
 
     assert verdict.winning_variant_id == "v1"
@@ -702,7 +702,7 @@ def test_generate_adaptation_features_parses_long_form_manifest(
     )
 
     manifest = minds.generate_adaptation_features(
-        CLIP, "youtube", "LONG_FORM", SEGMENTS, memory_context='brand_voice: "bold"'
+        CLIP, "youtube", "LONG_FORM", SEGMENTS, chat_context='brand_voice: "bold"'
     )
 
     assert manifest.platform == "youtube"
@@ -811,7 +811,7 @@ def test_generate_adaptation_features_uses_two_step_flow_when_read_is_prose(
     )
 
     manifest = minds.generate_adaptation_features(
-        CLIP, "youtube", "LONG_FORM", SEGMENTS, memory_context='brand_voice: "bold"'
+        CLIP, "youtube", "LONG_FORM", SEGMENTS, chat_context='brand_voice: "bold"'
     )
 
     assert manifest.chapters[0].title == "Hook"
@@ -959,3 +959,121 @@ def test_notify_mind_swallows_message_send_failure(
     )
 
     assert minds.notify_mind("hello") is None
+
+
+# --- build_chat_context ---
+
+
+def test_build_chat_context_returns_none_on_empty_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds,
+        "_history_rows",
+        lambda alias, limit=50: [],
+    )
+    assert minds.build_chat_context() is None
+
+
+def test_build_chat_context_renders_role_annotations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds,
+        "_history_rows",
+        lambda alias, limit=50: [
+            {"senderType": 1, "messageText": "Hello Mind!"},
+            {"senderType": 0, "messageText": "Hi creator!"},
+            {
+                "senderType": 1,
+                "messageText": f"{minds.SYSTEM_MARKER}Trend results here",
+            },
+        ],
+    )
+    context = minds.build_chat_context()
+    assert context is not None
+    assert "Creator: Hello Mind!" in context
+    assert "Mind: Hi creator!" in context
+    assert "[System]: Trend results here" in context
+
+
+def test_build_chat_context_excludes_init_instruction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds,
+        "_history_rows",
+        lambda alias, limit=50: [
+            {"senderType": 1, "messageText": minds.CHAT_INIT_INSTRUCTION},
+            {"senderType": 1, "messageText": "Actual message"},
+        ],
+    )
+    context = minds.build_chat_context()
+    assert context is not None
+    assert minds.CHAT_INIT_INSTRUCTION not in context
+    assert "Creator: Actual message" in context
+
+
+def test_build_chat_context_respects_character_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    long_message = "x" * 500
+    rows = [
+        {"senderType": 1, "messageText": f"Message {i}: {long_message}"}
+        for i in range(20)
+    ]
+    monkeypatch.setattr(minds, "_history_rows", lambda alias, limit=50: rows)
+    context = minds.build_chat_context()
+    assert context is not None
+    assert len(context) <= minds.CHAT_CONTEXT_MAX_CHARS
+
+
+def test_build_chat_context_preserves_newest_messages_when_over_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the character limit is hit, the oldest messages are truncated but
+    the newest messages (last in context) are preserved."""
+    _configure_minds(monkeypatch)
+    rows = [
+        {"senderType": 1, "messageText": "First message"},
+        {"senderType": 1, "messageText": "x" * 2000},
+        {"senderType": 1, "messageText": "y" * 2000},
+    ]
+    monkeypatch.setattr(minds, "_history_rows", lambda alias, limit=50: rows)
+    context = minds.build_chat_context()
+    assert context is not None
+    assert "Creator: y" in context
+
+
+def test_build_chat_context_skips_empty_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds,
+        "_history_rows",
+        lambda alias, limit=50: [
+            {"senderType": 1, "messageText": ""},
+            {"senderType": 1, "messageText": "   "},
+            {"senderType": 0, "messageText": "Valid reply"},
+        ],
+    )
+    context = minds.build_chat_context()
+    assert context is not None
+    assert context == "Mind: Valid reply"
+
+
+def test_build_chat_context_returns_none_on_minds_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    monkeypatch.setattr(
+        minds,
+        "_history_rows",
+        lambda alias, limit=50: (_ for _ in ()).throw(minds.MindsError("boom")),
+    )
+    assert minds.build_chat_context() is None

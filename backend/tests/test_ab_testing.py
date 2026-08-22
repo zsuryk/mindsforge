@@ -60,7 +60,7 @@ def stub_winner(
     variant_id: str | None = None,
     reasoning: str = "Hook A held viewers longer; reuse this formula.",
 ) -> None:
-    def decide(platform, variants, transcript, memory_context=None):
+    def decide(platform, variants, transcript, chat_context=None):
         picked = variant_id if variant_id is not None else variants[0]["variant_id"]
         return minds.ExperimentVerdict(winning_variant_id=picked, reasoning=reasoning)
 
@@ -589,7 +589,7 @@ def test_mind_failure_fails_experiment_with_error_message(
     monkeypatch.setattr(
         minds,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, memory_context=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
         ).throw(minds.MindsError("builder api down")),
     )
@@ -663,7 +663,7 @@ def test_mind_picking_unknown_variant_fails_experiment(
     monkeypatch.setattr(
         minds,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, memory_context=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
         ).throw(minds.MindsError("Experiment verdict picked unknown variant id 'ghost'")),
     )
@@ -700,7 +700,7 @@ def test_unexpected_exception_fails_only_that_experiment(
             ],
         )
 
-    def decide(platform, variants, transcript, memory_context=None):
+    def decide(platform, variants, transcript, chat_context=None):
         if variants[0]["variant_id"] == "v1":
             raise RuntimeError("boom in the verdict code")
         return minds.ExperimentVerdict(
@@ -994,7 +994,7 @@ def test_failed_experiment_posts_notification_with_error(
     monkeypatch.setattr(
         minds,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, memory_context=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
         ).throw(minds.MindsError("builder api down")),
     )
@@ -1060,7 +1060,7 @@ def test_notification_failure_does_not_change_failed_experiment(
     monkeypatch.setattr(
         minds,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, memory_context=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
         ).throw(minds.MindsError("builder api down")),
     )
@@ -1179,7 +1179,7 @@ def test_failed_experiment_logs_activity_row(
     monkeypatch.setattr(
         minds,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, memory_context=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
         ).throw(minds.MindsError("builder api down")),
     )

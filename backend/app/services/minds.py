@@ -48,7 +48,10 @@ CHAT_INIT_INSTRUCTION = (
     f"{SYSTEM_MARKER}You are this creator's content strategist. Ground every "
     "answer in this conversation and in the creator's memory. When the creator "
     "states a brand rule — a preference about how their content should look, "
-    "sound, or be packaged — acknowledge it and remember it. You may use your "
+    "sound, or be packaged — acknowledge it and remember it. When you score "
+    "clips or generate adaptations, explicitly reference what you remember "
+    "about this creator's preferences and past results. Reference specific "
+    "rules and experiments when they are relevant. You may use your "
     "own Tavily connection to research trends when asked open-ended questions."
 )
 
@@ -578,20 +581,68 @@ def build_memory_context(memory: dict[str, Any]) -> str:
     return rendered
 
 
+CHAT_CONTEXT_MAX_CHARS = 4000
+
+
+def build_chat_context() -> str | None:
+    """Render the Mind's own conversation thread as a prompt fragment.
+
+    Fetches the ``mindsforge-chat`` conversation, filters to meaningful
+    messages (creator, Mind, and system notifications), renders them with
+    role annotations, and caps the output at ``CHAT_CONTEXT_MAX_CHARS``
+    characters so the prompt stays within token budgets.
+
+    The system initialisation instruction is excluded — it is setup, not
+    memory. Returns ``None`` when the conversation is empty or the Builder
+    API is unreachable (best-effort, callers degrade gracefully).
+    """
+    _agent_id()
+    try:
+        rows = _history_rows(CHAT_ALIAS, limit=50)
+    except MindsError:
+        return None
+    lines: list[str] = []
+    char_count = 0
+    for row in reversed(rows):
+        text = row.get("messageText")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if text == CHAT_INIT_INSTRUCTION:
+            continue
+        if _is_mind_reply(row):
+            role_label = "Mind"
+            text_rendered = text
+        elif text.startswith(SYSTEM_MARKER):
+            role_label = "[System]"
+            text_rendered = text[len(SYSTEM_MARKER) :]
+        else:
+            role_label = "Creator"
+            text_rendered = text
+        line = f"{role_label}: {text_rendered}"
+        if char_count + len(line) + 1 > CHAT_CONTEXT_MAX_CHARS:
+            break
+        lines.append(line)
+        char_count += len(line) + 1
+    if not lines:
+        return None
+    lines.reverse()
+    return "\n".join(lines)
+
+
 def _build_metadata_read_prompt(
     transcript: str,
     *,
     duration_seconds: float | None,
-    memory_context: str | None,
+    chat_context: str | None,
 ) -> str:
     duration_block = (
         f"{duration_seconds:.1f}s" if duration_seconds is not None else "unknown"
     )
-    memory_block = (
-        "Creator memory context (brand voice, past insights):\n"
-        f"{memory_context}\n\n"
-        if memory_context
-        else "There is no creator memory or brand voice attached to this clip, "
+    context_block = (
+        "Creator conversation context (brand voice, past insights, preferences):\n"
+        f"{chat_context}\n\n"
+        if chat_context
+        else "There is no creator conversation context attached to this clip, "
         "so judge purely the content.\n\n"
     )
     return (
@@ -600,7 +651,7 @@ def _build_metadata_read_prompt(
         "A low score (even 0) is a completely valid answer, and doubt is allowed.\n\n"
         f"Clip transcript:\n{transcript}\n\n"
         f"Clip duration: {duration_block}\n\n"
-        f"{memory_block}"
+        f"{context_block}"
         "Give me your read in prose: what this clip is, who it is for, and its "
         "rough engagement potential. I will then ask you to convert it into a "
         "structured verdict."
@@ -673,7 +724,7 @@ def generate_clip_metadata(
     transcript: str,
     *,
     duration_seconds: float | None = None,
-    memory_context: str | None = None,
+    chat_context: str | None = None,
     conversation_alias: str | None = None,
 ) -> ClipMetadata:
     """Prompt the Mind to score a clip and return the structured verdict.
@@ -697,7 +748,7 @@ def generate_clip_metadata(
     alias = conversation_alias or MESSAGING_ALIAS
     agent_id = _agent_id()
     read_prompt = _build_metadata_read_prompt(
-        transcript, duration_seconds=duration_seconds, memory_context=memory_context
+        transcript, duration_seconds=duration_seconds, chat_context=chat_context
     )
     read = _message_mind(agent_id, read_prompt, alias=alias)
     if not isinstance(read, str) or not read.strip():
@@ -716,9 +767,9 @@ def _build_winner_prompt(
     platform: str,
     variants: list[dict[str, Any]],
     transcript: str,
-    memory_context: str | None,
+    chat_context: str | None,
 ) -> str:
-    memory_block = memory_context if memory_context else "none"
+    context_block = chat_context if chat_context else "none"
     variant_lines = "\n".join(
         f"- variant_id: {variant.get('variant_id')}, "
         f"title: {variant.get('title', '')}, "
@@ -738,8 +789,8 @@ def _build_winner_prompt(
         "Experiment variants (thumbnail is the rendered thumbnail file path "
         "viewers saw for that variant):\n"
         f"{variant_lines}\n\n"
-        "Creator memory context (brand voice and past learnings):\n"
-        f"{memory_block}\n\n"
+        "Creator conversation context (brand voice and past learnings):\n"
+        f"{context_block}\n\n"
         "Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n"
         "{\n"
         '  "winning_variant_id": "the id of the winning variant from the list above",\n'
@@ -765,7 +816,7 @@ def decide_experiment_winner(
     variants: list[dict[str, Any]],
     transcript: str,
     *,
-    memory_context: str | None = None,
+    chat_context: str | None = None,
 ) -> ExperimentVerdict:
     """Ask the Mind to pick the winning variant of a concluded experiment.
 
@@ -773,7 +824,7 @@ def decide_experiment_winner(
     unparseable verdicts, unknown winner ids, empty reasoning) so callers
     can fail the experiment closed instead of falling back to metrics.
     """
-    prompt = _build_winner_prompt(platform, variants, transcript, memory_context)
+    prompt = _build_winner_prompt(platform, variants, transcript, chat_context)
     message = _message_mind(_agent_id(), prompt)
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Experiment verdict response missing 'response' text")
@@ -861,13 +912,13 @@ def _build_adaptation_read_prompt(
     platform: str,
     surface: str,
     segments: list[dict[str, Any]],
-    memory_context: str | None,
+    chat_context: str | None,
 ) -> str:
     """Prose honest read of how to package the clip — no JSON demanded, so the
     Mind can engage honestly without reading the prompt as a fabrication ask.
     A schema-fill message (see ``_build_adaptation_fill_prompt``) converts the
     read into the structured manifest afterwards (ADR-0002, two-step flow)."""
-    memory_block = memory_context if memory_context else "none"
+    context_block = chat_context if chat_context else "none"
     return (
         "I need your honest read on a clip before packaging it. You are not "
         "fabricating anything: everything must be grounded in the clip "
@@ -875,8 +926,8 @@ def _build_adaptation_read_prompt(
         f"{_adaptation_clip_block(clip)}\n\n"
         "Timed transcript segments:\n"
         f"{_adaptation_segment_block(segments)}\n\n"
-        "Creator memory context (brand voice, past insights, previous adaptations):\n"
-        f"{memory_block}\n\n"
+        "Creator conversation context (brand voice, past insights, previous adaptations):\n"
+        f"{context_block}\n\n"
         "Give me your read in prose: what this clip is, who it is for, and how "
         f"you would package it for the creator's {platform} ({surface}) channel "
         "— which features fit, what the caption/hooks/overlays should say, and "
@@ -923,7 +974,7 @@ def generate_adaptation_features(
     surface: str,
     segments: list[dict[str, Any]],
     *,
-    memory_context: str | None = None,
+    chat_context: str | None = None,
     conversation_alias: str | None = None,
 ) -> AdaptationFeatures:
     """Ask the Mind to author the feature manifest for one platform-surface.
@@ -946,7 +997,7 @@ def generate_adaptation_features(
     alias = conversation_alias or MESSAGING_ALIAS
     agent_id = _agent_id()
     read_prompt = _build_adaptation_read_prompt(
-        clip, platform, surface, segments, memory_context
+        clip, platform, surface, segments, chat_context
     )
     read = _message_mind(agent_id, read_prompt, alias=alias)
     if not isinstance(read, str) or not read.strip():

@@ -82,23 +82,12 @@ def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
     clip = experiment.clip
     if clip is None:
         raise RuntimeError("Experiment references a missing clip")
-    settings = get_settings()
-    memory = None
-    if settings.MINDS_AGENT_ID:
-        try:
-            memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
-        except minds.MindsError as exc:
-            logger.info(
-                "Experiment %s: memory context unavailable, deciding without it: %s",
-                experiment.id,
-                exc,
-            )
-    memory_context = minds.build_memory_context(memory) if memory else None
+    chat_context = minds.build_chat_context()
     verdict = minds.decide_experiment_winner(
         platform=experiment.platform,
         variants=[dict(variant) for variant in (experiment.variants or [])],
         transcript=clip.transcript_text,
-        memory_context=memory_context,
+        chat_context=chat_context,
     )
     experiment.winning_variant_id = verdict.winning_variant_id
     experiment.learned_insight = verdict.reasoning

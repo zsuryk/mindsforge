@@ -48,32 +48,16 @@ def _feature_summary(features: dict[str, object] | None) -> str:
     return ", ".join(labels) if labels else "feature manifest"
 
 
-def _memory_context(settings) -> str | None:
-    """Best-effort memory context: a fetch failure degrades to None rather
-    than failing generation — only the verdict call is gated (ADR-0002).
+def _chat_context(settings) -> str | None:
+    """Best-effort chat context from the Mind's conversation thread.
 
     Adaptations-only trend injection: the curated trend-research block is
     appended when fresh trend data exists, so hooks/tags/captions follow
     current trends while clip scoring keeps its honest-read design. No trend
     data → no block → the context is exactly what every other flow sees.
     """
-    try:
-        memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
-    except minds.MindsError as exc:
-        logger.info("Memory context unavailable, generating without it: %s", exc)
-        memory = None
-    if not memory:
-        return None
-    # The curated trend block below is the bounded view (latest 5 entries in
-    # 7 days) for adaptations, so the raw trend_research dump is excluded from
-    # the generic context here — otherwise the prompt would carry stale entries
-    # past the bound, twice. Every other memory-prompt flow still sees the raw
-    # bounded list via MEMORY_CONTEXT_KEYS.
-    context_memory = {
-        key: value for key, value in memory.items() if key != trends.TREND_RESEARCH_KEY
-    }
-    context = minds.build_memory_context(context_memory) if context_memory else None
-    trend_block = trends.build_trend_block(memory)
+    context = minds.build_chat_context()
+    trend_block = trends.build_trend_block(minds.fetch_memory(settings.MINDS_AGENT_ID))
     if trend_block:
         context = f"{context}\n\n{trend_block}" if context else trend_block
     return context
@@ -147,7 +131,7 @@ def generate_adaptation(adaptation_id: str) -> None:
                 platform=adaptation.platform,
                 surface=adaptation.surface.value,
                 segments=[asdict(segment) for segment in segments],
-                memory_context=_memory_context(settings),
+                chat_context=_chat_context(settings),
                 # Fresh conversation per attempt: retries re-send byte-identical
                 # prompts, and a Mind that sees the same templated prompt repeat
                 # in one conversation eventually refuses in prose (ADR-0002).

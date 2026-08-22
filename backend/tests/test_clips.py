@@ -396,7 +396,7 @@ def test_rerunning_pipeline_clears_stale_error_message(
     monkeypatch.setattr(
         minds,
         "generate_clip_metadata",
-        lambda transcript, duration_seconds=None, memory_context=None, **kwargs: minds.ClipMetadata(
+        lambda transcript, duration_seconds=None, chat_context=None, **kwargs: minds.ClipMetadata(
             virality_score=60,
             suggested_titles=["A"],
             platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},

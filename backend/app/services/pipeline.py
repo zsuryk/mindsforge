@@ -64,7 +64,7 @@ def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
     """Ask the Mind to score each extracted clip and persist the verdict.
 
     Scoring is fail-closed (ADR-0002): Minds must be configured and every
-    verdict call must succeed, otherwise the job fails. The memory-context
+    verdict call must succeed, otherwise the job fails. The chat-context
     fetch may still degrade to None — only verdict calls are gated.
     """
     settings = get_settings()
@@ -79,20 +79,13 @@ def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
     if not clips:
         return
 
-    try:
-        memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
-    except minds.MindsError as exc:
-        logger.info(
-            "Job %s: memory context unavailable, scoring without it: %s", job.id, exc
-        )
-        memory = None
-    memory_context = minds.build_memory_context(memory) if memory else None
+    chat_context = minds.build_chat_context()
 
     for clip in clips:
         metadata = minds.generate_clip_metadata(
             clip.transcript_text,
             duration_seconds=clip.end_time - clip.start_time,
-            memory_context=memory_context,
+            chat_context=chat_context,
             conversation_alias=conversation_alias,
         )
         clip.virality_score = metadata.virality_score
@@ -107,6 +100,7 @@ def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
 
 def run_pipeline(job_id: str) -> None:
     settings = get_settings()
+    logger.debug("Job %s: pipeline starting", job_id)
     with get_session_factory()() as db:
         job = db.get(Job, job_id)
         if job is None:
@@ -117,6 +111,7 @@ def run_pipeline(job_id: str) -> None:
             if job.source_url:
                 job.status = JobStatus.DOWNLOADING
                 db.commit()
+                logger.debug("Job %s: downloading from %s", job_id, job.source_url)
 
                 raw_dir = settings.MEDIA_DIR / "raw" / job.id
                 source_path = media.download_video(job.source_url, raw_dir)
@@ -133,9 +128,11 @@ def run_pipeline(job_id: str) -> None:
             if not source.is_file():
                 raise RuntimeError(f"Source media missing: {source}")
 
+            logger.debug("Job %s: extracting audio from %s", job.id, source)
             audio_dir = settings.MEDIA_DIR / "audio" / job.id
             audio_dir.mkdir(parents=True, exist_ok=True)
             wav_path = media.extract_audio(source, audio_dir / "audio.wav")
+            logger.debug("Job %s: transcribing %s", job.id, wav_path)
             result = transcription.transcribe(wav_path)
             job.transcript_segments = [asdict(segment) for segment in result.segments]
             job.duration_seconds = result.duration_seconds
@@ -149,6 +146,7 @@ def run_pipeline(job_id: str) -> None:
 
             job.status = JobStatus.EXTRACTING_CLIPS
             db.commit()
+            logger.debug("Job %s: extracting clips", job.id)
             _extract_clips(db, job, source)
             # Fresh conversation per run: retries re-send identical scoring
             # prompts, and a Mind that sees the same templated prompt repeat in
@@ -157,6 +155,7 @@ def run_pipeline(job_id: str) -> None:
             # The Builder API caps aliases at 64 chars, so the job id is
             # truncated and only the fresh hex keeps the alias unique.
             run_alias = f"{minds.MESSAGING_ALIAS}-{job.id[:8]}-{uuid4().hex}"
+            logger.debug("Job %s: scoring clips with alias %s", job.id, run_alias)
             _score_clips(db, job, run_alias)
             job.status = JobStatus.COMPLETED
             db.commit()

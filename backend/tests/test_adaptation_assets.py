@@ -364,7 +364,7 @@ def test_adaptation_api_serves_rendered_assets(
         clip = make_clip(db, tmp_path, video)
         clip_id = clip.id
 
-    def _stub_features(clip, platform, surface, segments, memory_context=None, **kwargs):
+    def _stub_features(clip, platform, surface, segments, chat_context=None, **kwargs):
         return minds.AdaptationFeatures(
             platform=platform, surface=surface, **LONG_FORM_FEATURES
         )

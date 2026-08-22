@@ -78,7 +78,7 @@ def stub_features(
     error: Exception | None = None,
 ) -> None:
     def generate(
-        clip, platform, surface, segments, memory_context=None, conversation_alias=None
+        clip, platform, surface, segments, chat_context=None, conversation_alias=None
     ):
         if error is not None:
             raise error
@@ -141,7 +141,7 @@ def test_regenerate_returns_cached_ready_row_without_regeneration(
 
     calls = {"count": 0}
 
-    def counting_generate(clip, platform, surface, segments, memory_context=None, **kwargs):
+    def counting_generate(clip, platform, surface, segments, chat_context=None, **kwargs):
         calls["count"] += 1
         return minds.AdaptationFeatures(
             platform=platform,
@@ -253,7 +253,7 @@ def test_each_adaptation_attempt_uses_fresh_conversation_alias(
         clip = make_clip(db, tmp_path)
     aliases: list[str] = []
 
-    def capturing_generate(clip, platform, surface, segments, memory_context=None, **kwargs):
+    def capturing_generate(clip, platform, surface, segments, chat_context=None, **kwargs):
         aliases.append(kwargs.get("conversation_alias"))
         features = (
             {
@@ -624,6 +624,11 @@ def test_adaptation_read_prompt_carries_trend_block_when_trend_data_exists(
     recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     monkeypatch.setattr(
         minds,
+        "build_chat_context",
+        lambda: "Creator: I like fitness content",
+    )
+    monkeypatch.setattr(
+        minds,
         "fetch_memory",
         lambda agent_id: {
             "trend_research": [
@@ -639,15 +644,12 @@ def test_adaptation_read_prompt_carries_trend_block_when_trend_data_exists(
         },
     )
 
-    context = adaptations._memory_context(get_settings())
+    context = adaptations._chat_context(get_settings())
 
     assert context is not None
     assert "Trending research (last 7 days):" in context
     assert "fitness shorts" in context
-    # The raw trend_research dump is excluded from the adaptation context —
-    # the curated block is the only trend signal, so stale entries can never
-    # bypass the 7-day bound or reach the prompt twice.
-    assert "\ntrend_research:" not in context
+    assert "Creator: I like fitness content" in context
     prompt = minds._build_adaptation_read_prompt(
         {"id": "c1", "title": "t", "start_time": 0, "end_time": 10, "transcript": "x"},
         "youtube",
@@ -658,16 +660,18 @@ def test_adaptation_read_prompt_carries_trend_block_when_trend_data_exists(
     assert "Trending research (last 7 days):" in prompt
 
 
-def test_adaptation_memory_context_has_no_trend_block_without_trend_data(
+def test_adaptation_chat_context_has_no_trend_block_without_trend_data(
     monkeypatch: pytest.MonkeyPatch,
     _minds_env: None,
 ) -> None:
+    monkeypatch.setattr(minds, "build_chat_context", lambda: "Creator: Hello")
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
 
-    context = adaptations._memory_context(get_settings())
+    context = adaptations._chat_context(get_settings())
 
     assert context is not None
     assert "Trending research" not in context
+    assert "Creator: Hello" in context
 
 
 def test_ready_adaptation_posts_notification_with_feature_summary(
