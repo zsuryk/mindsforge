@@ -553,27 +553,6 @@ def test_generate_clip_metadata_raises_on_empty_reply(
         minds.generate_clip_metadata("text")
 
 
-def test_build_memory_context_renders_known_keys() -> None:
-    context = minds.build_memory_context(
-        {
-            "creator_id": "creator-7",
-            "brand_voice": "bold",
-            "historical_insights": {"tiktok": ["fast pacing"]},
-            "ab_test_history": [{"winning_variant_id": "v1"}],
-        }
-    )
-    assert 'creator_id: "creator-7"' in context
-    assert 'brand_voice: "bold"' in context
-    assert "historical_insights" in context
-    assert "ab_test_history" in context
-
-
-def test_build_memory_context_falls_back_to_whole_tree() -> None:
-    context = minds.build_memory_context({"unexpected_key": {"nested": True}})
-    assert "unexpected_key" in context
-    assert context == '{"unexpected_key": {"nested": true}}'
-
-
 VARIANTS = [
     {"variant_id": "v1", "title": "Hook A", "views": 600, "clicks": 30, "ctr": 5.0},
     {"variant_id": "v2", "title": "Hook B", "views": 400, "clicks": 8, "ctr": 2.0},

@@ -58,17 +58,6 @@ CHAT_INIT_INSTRUCTION = (
 # Mind replies arrive as senderType 0 (human messages are senderType 1).
 MIND_SENDER_TYPE = 0
 
-MEMORY_CONTEXT_KEYS = (
-    "creator_id",
-    "brand_voice",
-    "historical_insights",
-    "ab_test_history",
-    "adaptation_history",
-    "trend_research",
-    "brand_rules",
-)
-MEMORY_CONTEXT_VALUE_LIMIT = 2000
-
 
 class MindsError(RuntimeError):
     pass
@@ -560,25 +549,6 @@ def fetch_chat_history(limit: int = 50) -> list[ChatMessage]:
         else 0
     )
     return messages
-
-
-def build_memory_context(memory: dict[str, Any]) -> str:
-    """Render the memory context tree as a compact prompt fragment."""
-    lines: list[str] = []
-    for key in MEMORY_CONTEXT_KEYS:
-        value = memory.get(key)
-        if value is None:
-            continue
-        rendered = json.dumps(value, ensure_ascii=False)
-        if len(rendered) > MEMORY_CONTEXT_VALUE_LIMIT:
-            rendered = f"{rendered[:MEMORY_CONTEXT_VALUE_LIMIT]}…"
-        lines.append(f"{key}: {rendered}")
-    if lines:
-        return "\n".join(lines)
-    rendered = json.dumps(memory, ensure_ascii=False)
-    if len(rendered) > MEMORY_CONTEXT_VALUE_LIMIT:
-        rendered = f"{rendered[:MEMORY_CONTEXT_VALUE_LIMIT]}…"
-    return rendered
 
 
 CHAT_CONTEXT_MAX_CHARS = 4000

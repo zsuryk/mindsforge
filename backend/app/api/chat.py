@@ -9,7 +9,7 @@ from app.schemas.chat import (
     TrendResearchIn,
     TrendResearchOut,
 )
-from app.services import minds, rules, trends
+from app.services import minds, trends
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ def _raise_upstream_error(exc: Exception) -> None:
 
 @router.post("/chat/messages", response_model=ChatSendOut)
 def send_chat_message(payload: ChatSendIn) -> ChatSendOut:
+    logger.debug("POST /chat/messages: %s", payload.message[:80])
     # Inline trend trigger: "search trends for X" runs the search-and-notify
     # before the user message is posted, so the Mind answers grounded in live
     # data in a single round trip. Explicit intent must not silently degrade.
@@ -40,18 +41,7 @@ def send_chat_message(payload: ChatSendIn) -> ChatSendOut:
         reply = minds.send_chat_message(payload.message)
     except minds.MindsError as exc:
         _raise_upstream_error(exc)
-    # Brand-rule sidecar (non-blocking): a fast Groq call inspects the user
-    # message for explicit creator preferences and appends them to memory so
-    # every generation prompt carries the rules. A failure never blocks the
-    # chat — the Mind itself read the statement in the thread regardless.
-    detected: list[str] = []
-    try:
-        extracted = rules.extract_and_persist_brand_rules(payload.message)
-    except rules.RuleExtractionError as exc:
-        logger.warning("Brand-rule extraction skipped: %s", exc)
-    else:
-        detected = [rule.text for rule in extracted]
-    return ChatSendOut(reply=reply, rules=detected)
+    return ChatSendOut(reply=reply)
 
 
 @router.get("/chat/history", response_model=ChatHistoryOut)

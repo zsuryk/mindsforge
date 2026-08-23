@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class ChatMessageOut(BaseModel):
@@ -17,7 +17,6 @@ class ChatSendIn(BaseModel):
 
 class ChatSendOut(BaseModel):
     reply: str
-    rules: list[str] = Field(default_factory=list)
 
 
 class ChatHistoryOut(BaseModel):
