@@ -1,4 +1,5 @@
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -152,6 +153,53 @@ def test_send_chat_message_raises_when_unconfigured(
         minds.send_chat_message("hello")
 
 
+def test_send_chat_message_never_invokes_groq_brand_rule_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+
+    def fake_post(path, payload):
+        return FakeResponse({}, 200)
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse([], 200)
+        return FakeResponse([{"senderType": 0, "messageText": "reply"}], 200)
+
+    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    mock_extract = MagicMock()
+    with patch.dict("sys.modules", {"app.services.rules": MagicMock(extract_and_persist_brand_rules=mock_extract)}):
+        minds.send_chat_message("always use bold captions")
+
+    mock_extract.assert_not_called()
+
+
+def test_send_chat_message_never_exposes_groq_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+
+    def fake_post(path, payload):
+        return FakeResponse({}, 200)
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse([], 200)
+        return FakeResponse([{"senderType": 0, "messageText": "reply"}], 200)
+
+    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    mock_groq_client = MagicMock()
+    mock_groq_class = MagicMock(return_value=mock_groq_client)
+    with patch.dict("sys.modules", {"groq": MagicMock(Client=mock_groq_class)}):
+        minds.send_chat_message("test message")
+
+    mock_groq_class.assert_not_called()
+
+
 # --- fetch_chat_history ---
 
 
@@ -250,6 +298,31 @@ def test_api_send_message_returns_reply(
     body = response.json()
     assert body["reply"] == "hi"
     assert all(payload.get("alias") == minds.CHAT_ALIAS for _, payload in posts)
+
+
+def test_api_send_message_response_has_no_rules_field(
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_minds(monkeypatch)
+
+    def fake_post(path, payload):
+        return FakeResponse({}, 200)
+
+    def fake_get(path, params=None):
+        if params and params.get("limit") == 1:
+            return FakeResponse([], 200)
+        return FakeResponse([{"senderType": 0, "messageText": "acknowledged"}], 200)
+
+    monkeypatch.setattr(minds, "_post", fake_post)
+    monkeypatch.setattr(minds, "_get", fake_get)
+
+    test_client, _ = client
+    response = test_client.post("/api/v1/chat/messages", json={"message": "always use bold captions"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"reply": "acknowledged"}
+    assert "rules" not in body
 
 
 def test_api_send_message_502_on_timeout(
