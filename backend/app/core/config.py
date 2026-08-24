@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     HOST: str = "0.0.0.0"
@@ -19,14 +20,15 @@ class Settings(BaseSettings):
     MINDS_BUILDER_API_KEY: str = ""
     MINDS_AGENT_ID: str = ""
     TAVILY_API_KEY: str = ""
-    GROQ_API_KEY: str = ""
-    TRANSCRIPTION_PROVIDER: str = "groq"
+    TRANSCRIPTION_PROVIDER: str = "local"
     WHISPER_MODEL: str = "small"
     HF_TOKEN: str = ""
     FFMPEG_BIN: str = "ffmpeg"
     PROCESS_JOBS_ON_SUBMIT: bool = True
     AB_TEST_INTERVAL_SECONDS: int = 60
     AB_TEST_VIEW_THRESHOLD: int = 1000
+
+    LOG_LEVEL: str = "INFO"
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 

@@ -29,7 +29,7 @@ Everything renders into real assets (thumbnail PNGs, `captions.srt`, `chapters.t
 - **uv** — Python package manager
 - **Node.js 20+** (LTS recommended)
 - **FFmpeg 6+** (in system PATH)
-- **API keys** — the Mind is fail-closed without `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory); contact for the Minds keys or generate one. Transcription runs on Groq by default (`GROQ_API_KEY` — free key at https://console.groq.com), or fully locally with `TRANSCRIPTION_PROVIDER=local` if you're in a region Groq doesn't support — no VPN needed. Chat trend research needs `TAVILY_API_KEY` (free key at https://tavily.com).
+- **API keys** — the Mind is fail-closed without `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory); contact for the Minds keys or generate one. Transcription runs locally with Whisper by default (first run downloads the model, then offline). Chat trend research needs `TAVILY_API_KEY` (free key at https://tavily.com).
 
 ## Install the tools
 
@@ -65,7 +65,7 @@ In the `backend` folder:
 cp .env.example .env     # Windows: Copy-Item .env.example .env
 ```
 
-Fill in the Mind keys, `GROQ_API_KEY` (unless using `TRANSCRIPTION_PROVIDER=local`) and `TAVILY_API_KEY` in `.env`. Everything else has sane defaults.
+Fill in the Mind keys and `TAVILY_API_KEY` in `.env`. Everything else has sane defaults.
 
 ## Run
 
@@ -120,14 +120,13 @@ The Mind's memory survives backend restarts — it lives in local SQLite plus th
 
 | Problem | Fix |
 |---|---|
-| Job fails with `Minds is not configured` or `GROQ_API_KEY is not configured` | Keys missing from `backend/.env`, or the backend wasn't restarted after adding them (Ctrl+C, then `uv run --module app`). |
+| Job fails with `Minds is not configured` | Keys missing from `backend/.env`, or the backend wasn't restarted after adding them (Ctrl+C, then `uv run --module app`). |
 | Trend research fails with `TAVILY_API_KEY is not configured` | Add `TAVILY_API_KEY` to `backend/.env` and restart the backend — trend research is fail-closed without it. |
 | Chat shows `Timed out waiting for a Mind reply` | The Mind took longer than 180s to answer — check the Minds keys and that the agent is responsive, then send the message again. |
 | `command not found: ffmpeg` / jobs fail with an ffmpeg error | FFmpeg not on PATH — install it per OS and open a new terminal. |
 | Port 8000 already in use | Quit the other process, or run with `PORT=8001` and point the frontend's `NEXT_PUBLIC_API_URL` at it. |
 | Video fails to download | Some hosts (e.g. YouTube) block automated downloads — use a direct `.mp4` URL instead. |
 | Red status light in the header | Backend isn't running — start it (see **Run**). |
-| Groq transcription failed: Error code: 403 | Region unsupported by Groq — set `TRANSCRIPTION_PROVIDER=local` in `backend/.env` to transcribe with local Whisper instead (first run downloads the model). |
 
 ---
 

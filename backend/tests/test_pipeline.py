@@ -246,35 +246,6 @@ def test_local_provider_job_completes_with_faster_whisper(
     ]
 
 
-def test_missing_groq_api_key_fails_job_with_descriptive_message(
-    client: tuple[TestClient, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    test_client, tmp_path = client
-    _enable_pipeline(monkeypatch)
-    raw = tmp_path / "raw" / "video.mp4"
-    raw.parent.mkdir(parents=True, exist_ok=True)
-    raw.write_bytes(b"fake media bytes")
-    wav = tmp_path / "audio.wav"
-    wav.write_bytes(b"fake wav bytes")
-    monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
-    monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
-    monkeypatch.setenv("GROQ_API_KEY", "")
-    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
-    get_settings.cache_clear()
-
-    res = test_client.post(
-        "/api/v1/jobs/process",
-        data={"source_url": "https://example.com/no-key.mp4"},
-    )
-    job_id = res.json()["job_id"]
-
-    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
-    assert job["status"] == "FAILED"
-    assert "GROQ_API_KEY is not configured" in job["error_message"]
-    assert job["transcript_segments"] is None
-
-
 def test_process_unknown_job_is_a_noop(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
