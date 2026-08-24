@@ -5,7 +5,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import ClipAdaptation
 from app.models.clip import Clip
@@ -612,44 +611,23 @@ def test_memory_history_written_only_after_row_is_ready(
     detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
     assert detail["status"] == "READY"
 
-    assert statuses_at_fetch == ["GENERATING", "READY"]
+    assert statuses_at_fetch == ["READY"]
 
 
-def test_adaptation_read_prompt_carries_trend_block_when_trend_data_exists(
+def test_adaptation_read_prompt_carries_chat_context(
     monkeypatch: pytest.MonkeyPatch,
-    _minds_env: None,
 ) -> None:
-    from datetime import UTC, datetime, timedelta
-
-    recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     monkeypatch.setattr(
         minds,
         "build_chat_context",
-        lambda: "Creator: I like fitness content",
-    )
-    monkeypatch.setattr(
-        minds,
-        "fetch_memory",
-        lambda agent_id: {
-            "trend_research": [
-                {
-                    "query": "fitness shorts",
-                    "platform": "youtube",
-                    "results": [
-                        {"title": "Best Fitness Shorts", "url": "https://example.com", "content": "content"}
-                    ],
-                    "researched_at": recent,
-                }
-            ]
-        },
+        lambda: "[System]: Trending: fitness shorts\nCreator: I like fitness content",
     )
 
-    context = adaptations._chat_context(get_settings())
+    context = adaptations._chat_context()
 
     assert context is not None
-    assert "Trending research (last 7 days):" in context
-    assert "fitness shorts" in context
     assert "Creator: I like fitness content" in context
+    assert "Trending: fitness shorts" in context
     prompt = minds._build_adaptation_read_prompt(
         {"id": "c1", "title": "t", "start_time": 0, "end_time": 10, "transcript": "x"},
         "youtube",
@@ -657,20 +635,17 @@ def test_adaptation_read_prompt_carries_trend_block_when_trend_data_exists(
         [{"start": 0, "end": 5, "text": "hi"}],
         context,
     )
-    assert "Trending research (last 7 days):" in prompt
+    assert "Trending: fitness shorts" in prompt
 
 
-def test_adaptation_chat_context_has_no_trend_block_without_trend_data(
+def test_adaptation_chat_context_returns_build_chat_context_output(
     monkeypatch: pytest.MonkeyPatch,
-    _minds_env: None,
 ) -> None:
     monkeypatch.setattr(minds, "build_chat_context", lambda: "Creator: Hello")
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
 
-    context = adaptations._chat_context(get_settings())
+    context = adaptations._chat_context()
 
     assert context is not None
-    assert "Trending research" not in context
     assert "Creator: Hello" in context
 
 

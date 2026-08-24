@@ -5,7 +5,7 @@ from uuid import uuid4
 from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import AdaptationStatus, ClipAdaptation
-from app.services import activity, minds, trends
+from app.services import activity, minds
 from app.services.adaptation_assets import render_adaptation_assets
 from app.services.transcription import TranscriptSegment
 
@@ -48,19 +48,14 @@ def _feature_summary(features: dict[str, object] | None) -> str:
     return ", ".join(labels) if labels else "feature manifest"
 
 
-def _chat_context(settings) -> str | None:
+def _chat_context() -> str | None:
     """Best-effort chat context from the Mind's conversation thread.
 
-    Adaptations-only trend injection: the curated trend-research block is
-    appended when fresh trend data exists, so hooks/tags/captions follow
-    current trends while clip scoring keeps its honest-read design. No trend
-    data → no block → the context is exactly what every other flow sees.
+    Trend data is included automatically — trend research results are posted
+    as system notifications in the chat thread, so they appear in the
+    conversation context via ``build_chat_context()``.
     """
-    context = minds.build_chat_context()
-    trend_block = trends.build_trend_block(minds.fetch_memory(settings.MINDS_AGENT_ID))
-    if trend_block:
-        context = f"{context}\n\n{trend_block}" if context else trend_block
-    return context
+    return minds.build_chat_context()
 
 
 def _persist_adaptation_history(adaptation: ClipAdaptation) -> None:
@@ -105,7 +100,6 @@ def generate_adaptation(adaptation_id: str) -> None:
     history appended) or → FAILED with a stored error message on any
     Minds failure or unexpected error.
     """
-    settings = get_settings()
     with get_session_factory()() as db:
         adaptation = db.get(ClipAdaptation, adaptation_id)
         if adaptation is None or adaptation.status != AdaptationStatus.PENDING:
@@ -131,7 +125,7 @@ def generate_adaptation(adaptation_id: str) -> None:
                 platform=adaptation.platform,
                 surface=adaptation.surface.value,
                 segments=[asdict(segment) for segment in segments],
-                chat_context=_chat_context(settings),
+                chat_context=_chat_context(),
                 # Fresh conversation per attempt: retries re-send byte-identical
                 # prompts, and a Mind that sees the same templated prompt repeat
                 # in one conversation eventually refuses in prose (ADR-0002).
