@@ -24,13 +24,7 @@ function isInHistory(history: ChatMessage[], message: ChatMessage): boolean {
   );
 }
 
-function MessageBubble({
-  message,
-  rules,
-}: {
-  message: ChatMessage;
-  rules?: string[];
-}) {
+function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
     return (
       <div className="flex justify-center">
@@ -59,14 +53,6 @@ function MessageBubble({
       <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground">
         {message.text}
       </div>
-      {rules?.map((rule) => (
-        <p
-          key={rule}
-          className="rounded-full border border-insight/30 bg-insight/10 px-3 py-1 text-xs text-insight"
-        >
-          Your Mind saved: {rule}
-        </p>
-      ))}
     </div>
   );
 }
@@ -124,7 +110,6 @@ function TrendChip({
 export default function ChatPage() {
   const [history, setHistory] = useState<ChatMessage[] | null>(null);
   const [pending, setPending] = useState<ChatMessage[]>([]);
-  const [savedRules, setSavedRules] = useState<Record<string, string[]>>({});
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
   const [trendQuery, setTrendQuery] = useState("");
@@ -174,9 +159,6 @@ export default function ChatPage() {
     setError(null);
     try {
       const result = await sendChatMessage(text);
-      if (result.rules.length > 0) {
-        setSavedRules((current) => ({ ...current, [text]: result.rules }));
-      }
       setPending((current) => [
         ...current,
         { role: "mind", text: result.reply, fingerprint: null },
@@ -262,9 +244,6 @@ export default function ChatPage() {
                 >
                   <MessageBubble
                     message={message}
-                    rules={
-                      message.role === "user" ? savedRules[message.text] : undefined
-                    }
                   />
                 </div>
               ))}

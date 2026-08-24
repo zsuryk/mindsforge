@@ -406,10 +406,9 @@ describe("fetchChatHistory", () => {
 });
 
 describe("sendChatMessage", () => {
-  it("posts the message and returns the reply with saved rules", async () => {
+  it("posts the message and returns the reply", async () => {
     const payload = {
       reply: "Always open with a bold hook.",
-      rules: ["Always open with a bold hook"],
     };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(payload));
     vi.stubGlobal("fetch", fetchMock);

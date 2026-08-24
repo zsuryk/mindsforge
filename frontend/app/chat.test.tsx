@@ -82,7 +82,7 @@ describe("ChatPage", () => {
 
     expect(await screen.findByText("Remember: bold hooks")).toBeInTheDocument();
 
-    send.resolve(jsonResponse({ reply: "Noted!", rules: [] }));
+    send.resolve(jsonResponse({ reply: "Noted!" }));
 
     expect(await screen.findByText("Noted!")).toBeInTheDocument();
   });
@@ -106,39 +106,10 @@ describe("ChatPage", () => {
 
     expect(await screen.findByText(/your mind is thinking/i)).toBeInTheDocument();
 
-    send.resolve(jsonResponse({ reply: "I'll check.", rules: [] }));
+    send.resolve(jsonResponse({ reply: "I'll check." }));
 
     expect(await screen.findByText("I'll check.")).toBeInTheDocument();
     expect(screen.queryByText(/your mind is thinking/i)).not.toBeInTheDocument();
-  });
-
-  it("renders rule chips from the rules response", async () => {
-    const user = userEvent.setup();
-    const send = deferred();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: RequestInfo | URL) => {
-        if (String(input).includes("/chat/messages")) return send.promise;
-        return Promise.resolve(jsonResponse({ messages: [] }));
-      }),
-    );
-
-    render(<ChatPage />);
-    await screen.findByText(/conversation with your Mind starts here/i);
-
-    await user.type(screen.getByLabelText(/message your mind/i), "Always open with a bold hook");
-    await user.click(screen.getByRole("button", { name: /^send$/i }));
-
-    send.resolve(
-      jsonResponse({
-        reply: "Remembered.",
-        rules: ["Always open with a bold hook"],
-      }),
-    );
-
-    expect(
-      await screen.findByText("Your Mind saved: Always open with a bold hook"),
-    ).toBeInTheDocument();
   });
 
   it("renders trend chips from researchTrends", async () => {
@@ -231,7 +202,7 @@ describe("ChatPage", () => {
     expect(screen.getByText("First draft?")).toBeInTheDocument();
     expect(screen.getByText(/your mind is thinking/i)).toBeInTheDocument();
 
-    send.resolve(jsonResponse({ reply: "Draft approved.", rules: [] }));
+    send.resolve(jsonResponse({ reply: "Draft approved." }));
     await act(async () => {});
 
     expect(screen.getByText("Draft approved.")).toBeInTheDocument();

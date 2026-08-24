@@ -408,7 +408,6 @@ export type ChatMessage = {
 
 export type ChatSendResult = {
   reply: string;
-  rules: string[];
 };
 
 export type TrendResult = {
