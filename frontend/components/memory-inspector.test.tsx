@@ -23,13 +23,26 @@ const memory = {
 
 const agentMemory = { agent_id: "agent-1", memory };
 
+const chatHistory = {
+  messages: [
+    { role: "user", text: "Always use bold captions", fingerprint: null },
+    { role: "mind", text: "I'll remember that always use bold captions", fingerprint: null },
+  ],
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("MemoryInspectorPage", () => {
   it("renders the agent tag and insight cards from memory", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(agentMemory)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+        return jsonResponse(agentMemory);
+      }),
+    );
 
     render(<MemoryInspectorPage />);
 
@@ -43,7 +56,13 @@ describe("MemoryInspectorPage", () => {
   });
 
   it("renders the raw memory context in the JSON tree", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(agentMemory)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+        return jsonResponse(agentMemory);
+      }),
+    );
 
     render(<MemoryInspectorPage />);
 
@@ -53,10 +72,13 @@ describe("MemoryInspectorPage", () => {
 
   it("re-fetches memory when the refresh button is clicked", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(agentMemory))
-      .mockResolvedValueOnce(jsonResponse({ ...agentMemory, agent_id: "agent-2" }));
+    let memoryCallCount = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+      memoryCallCount++;
+      if (memoryCallCount === 2) return jsonResponse({ ...agentMemory, agent_id: "agent-2" });
+      return jsonResponse(agentMemory);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MemoryInspectorPage />);
@@ -65,13 +87,16 @@ describe("MemoryInspectorPage", () => {
     await user.click(screen.getByRole("button", { name: /refresh/i }));
 
     expect(await screen.findByText("agent-2")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("shows a clear error when the memory fetch fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ detail: "builder api down" }, 502)),
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+        return jsonResponse({ detail: "builder api down" }, 502);
+      }),
     );
 
     render(<MemoryInspectorPage />);
@@ -85,11 +110,13 @@ describe("MemoryInspectorPage", () => {
       agent_id: "agent-1",
       memory: { ...memory, tiktok_best_pacing: { ctr: 0.03 } },
     };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(agentMemory))
-      .mockResolvedValueOnce(jsonResponse({ success: true }))
-      .mockResolvedValueOnce(jsonResponse(updatedMemory));
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+      if (url.includes("/agent/memory/update")) {
+        return jsonResponse({ success: true });
+      }
+      return jsonResponse(updatedMemory);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MemoryInspectorPage />);
@@ -100,21 +127,26 @@ describe("MemoryInspectorPage", () => {
     await user.paste('{"ctr": 0.03}');
     await user.click(screen.getByRole("button", { name: /write to memory/i }));
 
-    expect(await screen.findByText(/Saved “tiktok_best_pacing”/)).toBeInTheDocument();
+    expect(await screen.findByText(/Saved.*tiktok_best_pacing/)).toBeInTheDocument();
     expect(await screen.findByText(JSON.stringify("tiktok_best_pacing"))).toBeInTheDocument();
 
-    const postCall = fetchMock.mock.calls[1];
-    expect(postCall[0]).toBe("http://localhost:8000/api/v1/agent/memory/update");
-    expect(postCall[1].method).toBe("POST");
-    expect(postCall[1].body).toBe(JSON.stringify({ key: "tiktok_best_pacing", value: { ctr: 0.03 } }));
+    const postCall = fetchMock.mock.calls.find(
+      (call: unknown[]) => call[0] === "http://localhost:8000/api/v1/agent/memory/update",
+    );
+    expect(postCall).toBeDefined();
+    expect(postCall![1].method).toBe("POST");
+    expect(postCall![1].body).toBe(JSON.stringify({ key: "tiktok_best_pacing", value: { ctr: 0.03 } }));
   });
 
   it("shows the update error when the write fails", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(agentMemory))
-      .mockResolvedValueOnce(jsonResponse({ detail: "request failed: timeout" }, 502));
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+      if (url.includes("/agent/memory/update")) {
+        return jsonResponse({ detail: "request failed: timeout" }, 502);
+      }
+      return jsonResponse(agentMemory);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MemoryInspectorPage />);
@@ -130,11 +162,30 @@ describe("MemoryInspectorPage", () => {
   it("shows an empty state when no learned rules exist", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ agent_id: "agent-1", memory: {} })),
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+        return jsonResponse({ agent_id: "agent-1", memory: {} });
+      }),
     );
 
     render(<MemoryInspectorPage />);
 
     expect(await screen.findByText(/no learned rules yet/i)).toBeInTheDocument();
+  });
+
+  it("renders the Mind's View section with conversation history", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+        return jsonResponse(agentMemory);
+      }),
+    );
+
+    render(<MemoryInspectorPage />);
+
+    expect(await screen.findByText("Mind's View")).toBeInTheDocument();
+    expect(screen.getByText("Always use bold captions")).toBeInTheDocument();
+    expect(screen.getByText("I'll remember that always use bold captions")).toBeInTheDocument();
   });
 });

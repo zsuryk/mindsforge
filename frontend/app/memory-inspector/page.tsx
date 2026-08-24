@@ -10,7 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AgentMemory, fetchAgentMemory, updateAgentMemory } from "@/lib/api";
+import {
+  AgentMemory,
+  ChatMessage,
+  fetchAgentMemory,
+  fetchChatHistory,
+  updateAgentMemory,
+} from "@/lib/api";
 import { collectInsights } from "@/lib/insights";
 import { cn } from "@/lib/utils";
 
@@ -24,8 +30,42 @@ function parseValueInput(raw: string): unknown {
   }
 }
 
+function ChatHistoryRow({ message }: { message: ChatMessage }) {
+  if (message.role === "system") {
+    return (
+      <div className="flex justify-center">
+        <p className="max-w-[80%] rounded-full border border-border/40 bg-secondary/50 px-3 py-1.5 text-center text-xs leading-relaxed text-muted-foreground">
+          {message.text}
+        </p>
+      </div>
+    );
+  }
+
+  if (message.role === "mind") {
+    return (
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-mind/15 text-mind ring-1 ring-mind/30">
+          <Brain className="h-4 w-4" />
+        </div>
+        <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl rounded-tl-sm border border-border/40 bg-card px-4 py-3 text-sm leading-relaxed text-foreground">
+          {message.text}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground">
+        {message.text}
+      </div>
+    </div>
+  );
+}
+
 export default function MemoryInspectorPage() {
   const [agentMemory, setAgentMemory] = useState<AgentMemory | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [key, setKey] = useState("");
@@ -36,7 +76,12 @@ export default function MemoryInspectorPage() {
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      setAgentMemory(await fetchAgentMemory());
+      const [memory, history] = await Promise.all([
+        fetchAgentMemory(),
+        fetchChatHistory(),
+      ]);
+      setAgentMemory(memory);
+      setChatHistory(history.messages);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load memory");
@@ -179,6 +224,25 @@ export default function MemoryInspectorPage() {
               </CardContent>
             </Card>
           </div>
+
+          <section className="space-y-4">
+            <h2 className="text-sm font-semibold text-foreground">Mind's View</h2>
+            <Card>
+              <CardContent className="p-4">
+                {chatHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No conversation history yet — start chatting with your Mind to see its native memory here.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {chatHistory.map((message, index) => (
+                      <ChatHistoryRow key={index} message={message} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </section>
 
           <section className="space-y-4">
             <h2 className="text-sm font-semibold text-foreground">Raw context</h2>
