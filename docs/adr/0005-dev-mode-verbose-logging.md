@@ -1,0 +1,3 @@
+# Dev-mode verbose logging
+
+Backend logging is configured via a `LOG_LEVEL` setting (default `INFO`) added to the Pydantic `Settings` class, which configures Python's root logger at app startup. The frontend uses a `lib/logger.ts` helper gated on `NODE_ENV === 'development'` that wraps `console.log/warn/error` with a `[debug]` prefix. Debug-level calls were added to the pipeline service (job lifecycle steps) and API request/response logging (chat, jobs, A/B tests), plus key frontend data-fetching functions and page refreshes. Text format was chosen over JSON for readability in local terminals; structured logging can be added later via a `LOG_FORMAT` setting if needed for production aggregation.

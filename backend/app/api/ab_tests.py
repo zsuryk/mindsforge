@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
@@ -22,6 +23,8 @@ from app.schemas.experiment import (
 )
 from app.services.ab_testing import ctr_percent
 from app.services.media import media_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -114,6 +117,7 @@ def start_ab_test(
     db.add(experiment)
     db.commit()
     db.refresh(experiment)
+    logger.debug("POST /ab-tests/start: created experiment %s for clip %s", experiment.id, clip.id)
     return _to_out(experiment)
 
 

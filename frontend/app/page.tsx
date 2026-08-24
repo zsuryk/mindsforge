@@ -39,6 +39,7 @@ import {
   submitJob,
 } from "@/lib/api";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { debugLog } from "@/lib/logger";
 
 const POLL_INTERVAL_MS = 5000;
 const RECENT_JOB_COUNT = 5;
@@ -160,6 +161,7 @@ export default function DashboardPage() {
 
   const refresh = useCallback(async () => {
     try {
+      debugLog("dashboard: refreshing stats");
       setStats(await fetchDashboardStats());
     } catch {
       // keep the last known stats when the poll fails
@@ -195,6 +197,7 @@ export default function DashboardPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      debugLog("dashboard: submitting job", sourceUrl);
       await submitJob({ sourceUrl });
       router.push("/jobs");
     } catch (err) {

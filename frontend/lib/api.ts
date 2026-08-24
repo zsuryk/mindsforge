@@ -1,3 +1,5 @@
+import { debugLog } from "./logger";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 export const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
 
@@ -105,7 +107,9 @@ async function extractError(res: Response): Promise<Error> {
 }
 
 export async function fetchJobs(): Promise<Job[]> {
+  debugLog("GET", `${API_URL}/jobs`);
   const res = await fetch(`${API_URL}/jobs`, { cache: "no-store" });
+  debugLog("GET /jobs ->", res.status);
   if (!res.ok) {
     throw await extractError(res);
   }
@@ -142,7 +146,9 @@ export async function submitJob(input: SubmitJobInput): Promise<JobCreated> {
   if (input.sourceUrl) form.append("source_url", input.sourceUrl);
   if (input.file) form.append("file", input.file);
 
+  debugLog("POST", `${API_URL}/jobs/process`, { title: input.title, sourceUrl: input.sourceUrl });
   const res = await fetch(`${API_URL}/jobs/process`, { method: "POST", body: form });
+  debugLog("POST /jobs/process ->", res.status);
   if (!res.ok) {
     throw await extractError(res);
   }
@@ -233,6 +239,7 @@ export async function startAbTest(input: {
   variantKind?: AbExperimentVariantKind;
   thumbnailPaths?: string[];
 }): Promise<AbExperiment> {
+  debugLog("POST", `${API_URL}/ab-tests/start`, { clipId: input.clipId, platform: input.platform });
   const res = await fetch(`${API_URL}/ab-tests/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -244,6 +251,7 @@ export async function startAbTest(input: {
       thumbnail_paths: input.thumbnailPaths ?? [],
     }),
   });
+  debugLog("POST /ab-tests/start ->", res.status);
   if (!res.ok) {
     throw await extractError(res);
   }
@@ -284,9 +292,11 @@ export type Adaptation = {
 };
 
 export async function fetchAdaptations(clipId: string): Promise<Adaptation[]> {
+  debugLog("GET", `${API_URL}/clips/${clipId}/adaptations`);
   const res = await fetch(`${API_URL}/clips/${clipId}/adaptations`, {
     cache: "no-store",
   });
+  debugLog("GET /clips/.../adaptations ->", res.status);
   if (!res.ok) {
     throw await extractError(res);
   }
@@ -416,11 +426,13 @@ export async function fetchChatHistory(): Promise<{ messages: ChatMessage[] }> {
 }
 
 export async function sendChatMessage(message: string): Promise<ChatSendResult> {
+  debugLog("POST", `${API_URL}/chat/messages`, message.slice(0, 80));
   const res = await fetch(`${API_URL}/chat/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
+  debugLog("POST /chat/messages ->", res.status);
   if (!res.ok) {
     throw await extractError(res);
   }

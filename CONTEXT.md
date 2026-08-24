@@ -9,7 +9,8 @@ The creator's Minds agent. It owns the persistent memory and authors everything 
 _Avoid_: agent, model, brain
 
 **Memory**:
-The Mind's persistent context tree, organized under keys such as `brand_voice`, `historical_insights`, `ab_test_history`, and `adaptation_history`.
+The Mind's persistent knowledge, held natively in its conversation thread. The Mind recalls brand rules, learned insights, and past outcomes from its own conversation history. A local SQLite cache exists for UI rendering (Memory Inspector) but is not the source of truth.
+_Avoid_: context tree, memory tree
 
 **Job**:
 A submitted long-form source (URL or upload) being processed by the ingestion pipeline.
@@ -64,7 +65,7 @@ The creator's ongoing conversation with the Mind, held in the dedicated `mindsfo
 _Avoid_: DM, assistant window, messenger
 
 **Brand rule**:
-A creator preference stated in chat and recorded into the Mind's memory (`brand_rules`); every subsequent generation prompt carries it.
+A creator preference stated in chat that the Mind acknowledges and retains in its conversation thread; every subsequent generation prompt carries it via the Mind's own memory context.
 _Avoid_: preference, style directive
 
 **Trend research**:

@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+    format="[%(levelname)s] %(name)s: %(message)s",
+)
+
 
 async def _ab_worker_loop() -> None:
     """Self-improving loop: periodically refresh active experiments and

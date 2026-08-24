@@ -1,6 +1,7 @@
 from pathlib import Path
 from urllib.parse import urlparse
 
+import logging
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -20,6 +21,8 @@ from app.models.job import IN_PROGRESS_STATUSES, Job, JobStatus
 from app.schemas.job import JobCreated, JobOut
 from app.services.media import fetch_video_title
 from app.services.pipeline import run_pipeline
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -86,6 +89,8 @@ def process_job(
 
     db.commit()
     db.refresh(job)
+
+    logger.debug("POST /jobs/process: created job %s (status=%s)", job.id, job.status)
 
     if get_settings().PROCESS_JOBS_ON_SUBMIT:
         background_tasks.add_task(run_pipeline, job.id)

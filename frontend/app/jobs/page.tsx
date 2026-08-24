@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Job, deleteJob, fetchJobs, retryJob, submitJob } from "@/lib/api";
+import { debugLog } from "@/lib/logger";
 
 const IN_PROGRESS_STATUSES = new Set([
   "PENDING",
@@ -31,6 +32,7 @@ export default function JobsPage() {
 
   const refresh = useCallback(async () => {
     try {
+      debugLog("jobs: refreshing list");
       setJobs(await fetchJobs());
     } catch {
       // keep the last known list when the poll fails
@@ -55,6 +57,7 @@ export default function JobsPage() {
     setSubmitting(true);
     setError(null);
     try {
+      debugLog("jobs: submitting", { title, sourceUrl: sourceUrl || undefined, file: file?.name });
       await submitJob({ title: title || undefined, sourceUrl: sourceUrl || undefined, file: file ?? undefined });
       setTitle("");
       setSourceUrl("");
