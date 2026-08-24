@@ -119,7 +119,7 @@ function MindAtWorkPanel({ events }: { events: MindActivity[] }) {
             The Mind is idle — submit a job to see it work.
           </p>
         ) : (
-          <ul className="divide-y divide-border/40">
+          <ul className="max-h-72 divide-y divide-border/40 overflow-y-auto">
             {sorted.map((event, index) => {
               const Icon = ACTIVITY_ICONS[event.event_type] ?? Brain;
               return (

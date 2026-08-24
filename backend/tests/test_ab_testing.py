@@ -1085,15 +1085,13 @@ def _activity_rows() -> list[MindActivity]:
         ).all()
 
 
-def test_sweep_logs_exactly_one_activity_row_when_no_experiments(
+def test_sweep_suppresses_activity_when_nothing_happened(
     client: tuple[TestClient, Path],
 ) -> None:
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
     rows = _activity_rows()
-    assert len(rows) == 1
-    assert rows[0].event_type == "experiment-sweep"
-    assert rows[0].label.startswith("Simulated sweep: +0 views across 0 variants")
+    assert len(rows) == 0
 
 
 def test_sweep_logs_one_row_for_variant_traffic(

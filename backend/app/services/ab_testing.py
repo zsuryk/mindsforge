@@ -193,10 +193,12 @@ def refresh_active_experiments(
                 except Exception as exc:  # noqa: BLE001 - one broken experiment must not abort the sweep
                     _fail_experiment(db, experiment, exc)
                 concluded.append(experiment)
-    # One row per sweep, even with zero experiments: an empty heartbeat is
-    # still proof the worker runs.
-    activity.log(
-        "experiment-sweep",
-        f"Simulated sweep: +{new_views_total} views across {swept_variants} variants",
-    )
+    # Only log when something meaningful happened: new views accumulated or
+    # experiments concluded. Silence zero-activity sweeps to avoid flooding
+    # the dashboard with noise.
+    if new_views_total > 0 or concluded:
+        activity.log(
+            "experiment-sweep",
+            f"Simulated sweep: +{new_views_total} views across {swept_variants} variants",
+        )
     return concluded
