@@ -5,7 +5,8 @@ import { ArrowUpRight, FlaskConical } from "lucide-react";
 
 import MindRemembersBadge from "@/components/mind-remembers-badge";
 import { Button } from "@/components/ui/button";
-import { ChatMessage, Clip, fetchChatHistory, fetchJobClips, mediaUrl } from "@/lib/api";
+import { useChatHistory } from "@/hooks/use-chat-history";
+import { Clip, fetchJobClips, mediaUrl } from "@/lib/api";
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -15,7 +16,7 @@ function formatTime(seconds: number): string {
 
 export default function JobClips({ jobId }: { jobId: string }) {
   const [clips, setClips] = useState<Clip[] | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages } = useChatHistory();
 
   useEffect(() => {
     let cancelled = false;
@@ -30,20 +31,6 @@ export default function JobClips({ jobId }: { jobId: string }) {
       cancelled = true;
     };
   }, [jobId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchChatHistory()
-      .then((result) => {
-        if (!cancelled) setMessages(result.messages);
-      })
-      .catch(() => {
-        if (!cancelled) setMessages([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   if (clips === null) {
     return <p className="px-6 pb-4 text-xs text-muted-foreground">Loading clips…</p>;

@@ -9,14 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useChatHistory } from "@/hooks/use-chat-history";
 import {
   Adaptation,
   AdaptationAssets,
   AdaptationThumbnailVariant,
-  ChatMessage,
   fetchAdaptation,
   fetchAdaptations,
-  fetchChatHistory,
   generateAdaptation,
   mediaUrl,
 } from "@/lib/api";
@@ -283,7 +282,7 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [testOpen, setTestOpen] = useState(false);
   const [testVariants, setTestVariants] = useState<AdaptationThumbnailVariant[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages } = useChatHistory();
 
   const upsert = useCallback((fresh: Adaptation) => {
     setAdaptations((current) => {
@@ -308,20 +307,6 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
   useEffect(() => {
     load();
   }, [load]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchChatHistory()
-      .then((result) => {
-        if (!cancelled) setMessages(result.messages);
-      })
-      .catch(() => {
-        if (!cancelled) setMessages([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const adaptation =
     adaptations?.find(
