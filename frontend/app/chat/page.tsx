@@ -5,6 +5,7 @@ import { Brain, MessageCircle, Search, Send } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { SystemMessageToggle } from "@/components/system-message-toggle";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,6 +16,7 @@ import {
   TrendResult,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useSystemMessageFilter } from "@/hooks/use-system-message-filter";
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -188,6 +190,7 @@ export default function ChatPage() {
   };
 
   const thread: ChatMessage[] = [...(history ?? []), ...pending];
+  const { showSystem, toggle, systemCount, filtered } = useSystemMessageFilter(thread);
   const isEmpty = history !== null && thread.length === 0;
 
   return (
@@ -196,7 +199,7 @@ export default function ChatPage() {
         <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border/40 bg-secondary/50">
           <MessageCircle className="h-5 w-5 text-muted-foreground" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
             Chat
           </h1>
@@ -204,6 +207,11 @@ export default function ChatPage() {
             Talk to your Mind — it remembers what you tell it.
           </p>
         </div>
+        <SystemMessageToggle
+          showSystem={showSystem}
+          onToggle={toggle}
+          count={systemCount}
+        />
       </header>
 
       {error && (
@@ -235,7 +243,7 @@ export default function ChatPage() {
             </div>
           ) : (
             <>
-              {thread.map((message, index) => (
+              {filtered.map((message, index) => (
                 <div
                   key={`${message.role}:${message.text}:${index}`}
                   className={cn(

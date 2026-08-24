@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe("ChatPage", () => {
-  it("renders user, mind and system messages from the history", async () => {
+  it("renders user and mind messages, hides system messages by default", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -56,11 +56,12 @@ describe("ChatPage", () => {
 
     render(<ChatPage />);
 
+    await screen.findByText("Make hooks bolder");
     expect(
-      await screen.findByText("Experiment concluded on clip 'The big reveal'."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Make hooks bolder")).toBeInTheDocument();
+      screen.queryByText("Experiment concluded on clip 'The big reveal'."),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Got it — bolder hooks from now on.")).toBeInTheDocument();
+    expect(screen.getByText("Show events")).toBeInTheDocument();
   });
 
   it("optimistically renders the message, then renders the reply", async () => {

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SystemMessageToggle } from "@/components/system-message-toggle";
 import {
   AgentMemory,
   ChatMessage,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/api";
 import { collectInsights } from "@/lib/insights";
 import { cn } from "@/lib/utils";
+import { useSystemMessageFilter } from "@/hooks/use-system-message-filter";
 
 function parseValueInput(raw: string): unknown {
   const trimmed = raw.trim();
@@ -119,6 +121,7 @@ export default function MemoryInspectorPage() {
   };
 
   const insights = agentMemory ? collectInsights(agentMemory.memory) : [];
+  const { showSystem, toggle, systemCount, filtered } = useSystemMessageFilter(chatHistory);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -231,7 +234,14 @@ export default function MemoryInspectorPage() {
           </div>
 
           <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-foreground">Mind's View</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">Mind's View</h2>
+              <SystemMessageToggle
+                showSystem={showSystem}
+                onToggle={toggle}
+                count={systemCount}
+              />
+            </div>
             <Card>
               <CardContent className="p-4">
                 {chatHistory.length === 0 ? (
@@ -240,7 +250,7 @@ export default function MemoryInspectorPage() {
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {chatHistory.map((message, index) => (
+                    {filtered.map((message, index) => (
                       <ChatHistoryRow key={index} message={message} />
                     ))}
                   </div>
