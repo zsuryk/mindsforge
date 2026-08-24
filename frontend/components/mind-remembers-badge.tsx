@@ -5,7 +5,7 @@ import { Brain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { collectConversationBrandRules } from "@/lib/insights";
 
-type Message = { role: string; text: string };
+type Message = { role: "user" | "mind" | "system"; text: string };
 
 export default function MindRemembersBadge({ messages }: { messages: Message[] }) {
   const rules = collectConversationBrandRules(messages ?? []);
@@ -22,7 +22,7 @@ export default function MindRemembersBadge({ messages }: { messages: Message[] }
       </Badge>
       {rules.map((rule, index) => (
         <Badge
-          key={index}
+          key={`${rule.role}-${index}`}
           variant="outline"
           className="border-border/60 bg-background/60 text-xs text-muted-foreground"
           title={rule.text}

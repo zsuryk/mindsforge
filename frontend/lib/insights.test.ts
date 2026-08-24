@@ -261,4 +261,16 @@ describe("collectConversationBrandRules", () => {
     expect(rules).toHaveLength(1);
     expect(rules[0].role).toBe("user");
   });
+
+  it("does not flag casual use of 'use' as a brand rule", () => {
+    const messages = [{ role: "user", text: "I use this software daily" }];
+    const rules = collectConversationBrandRules(messages);
+    expect(rules).toEqual([]);
+  });
+
+  it("does not flag bare 'I'll' as an acknowledgment", () => {
+    const messages = [{ role: "mind", text: "I'll go to the store" }];
+    const rules = collectConversationBrandRules(messages);
+    expect(rules).toEqual([]);
+  });
 });

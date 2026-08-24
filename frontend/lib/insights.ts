@@ -141,11 +141,11 @@ export function collectInsights(memory: Record<string, unknown>): Insight[] {
 }
 
 const PREFERENCE_PATTERNS = [
-  /\b(always|never|must|should|prefer|like|hate|love|want|need|keep|use|don'?t)\b/i,
+  /\b(always|never|must|should|prefer|hate|love|don'?t)\b/i,
 ];
 
 const ACKNOWLEDGMENT_PATTERNS = [
-  /\b(remember|noted|got it|will do|understood|i'?ll|acknowledged|saved)\b/i,
+  /\b(remember|noted|got it|will do|understood|acknowledged|saved)\b/i,
 ];
 
 function isPreferenceMessage(text: string): boolean {

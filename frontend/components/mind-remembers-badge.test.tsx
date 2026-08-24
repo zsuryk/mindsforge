@@ -12,7 +12,7 @@ describe("MindRemembersBadge", () => {
   });
 
   it("renders the Mind remembers badge with rule chips", () => {
-    const messages = [
+    const messages: Array<{ role: "user" | "mind" | "system"; text: string }> = [
       { role: "user", text: "I always use bold captions" },
       { role: "mind", text: "Got it, I'll remember that." },
     ];
@@ -25,7 +25,9 @@ describe("MindRemembersBadge", () => {
 
   it("truncates long rule text to 40 characters", () => {
     const longRule = "I always " + "a".repeat(50);
-    const messages = [{ role: "user", text: longRule }];
+    const messages: Array<{ role: "user" | "mind" | "system"; text: string }> = [
+      { role: "user", text: longRule },
+    ];
     render(<MindRemembersBadge messages={messages} />);
 
     const truncatedText = "I always " + "a".repeat(31) + "…";
@@ -33,7 +35,9 @@ describe("MindRemembersBadge", () => {
   });
 
   it("does not truncate short rule text", () => {
-    const messages = [{ role: "user", text: "I always use bold" }];
+    const messages: Array<{ role: "user" | "mind" | "system"; text: string }> = [
+      { role: "user", text: "I always use bold" },
+    ];
     render(<MindRemembersBadge messages={messages} />);
 
     expect(screen.getByText("I always use bold")).toBeInTheDocument();
