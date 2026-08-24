@@ -223,6 +223,11 @@ export default function MemoryInspectorPage() {
                 </form>
               </CardContent>
             </Card>
+
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-foreground">Raw context</h2>
+              <JsonTree data={agentMemory.memory} />
+            </section>
           </div>
 
           <section className="space-y-4">
@@ -242,11 +247,6 @@ export default function MemoryInspectorPage() {
                 )}
               </CardContent>
             </Card>
-          </section>
-
-          <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-foreground">Raw context</h2>
-            <JsonTree data={agentMemory.memory} />
           </section>
         </div>
       )}
