@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   collectBrandRules,
+  collectConversationBrandRules,
   collectInsights,
   collectLatestInsights,
   collectTrendQueries,
@@ -203,5 +204,61 @@ describe("collectLatestInsights", () => {
     });
 
     expect(insights).toEqual([{ title: "Tiktok insight", detail: "fast pacing" }]);
+  });
+});
+
+describe("collectConversationBrandRules", () => {
+  it("returns an empty list for empty messages", () => {
+    expect(collectConversationBrandRules([])).toEqual([]);
+  });
+
+  it("extracts user preference messages", () => {
+    const messages = [
+      { role: "user", text: "I always use bold captions" },
+      { role: "mind", text: "Got it, I'll remember that." },
+    ];
+    const rules = collectConversationBrandRules(messages);
+    expect(rules).toEqual([
+      { text: "I always use bold captions", role: "user" },
+      { text: "Got it, I'll remember that.", role: "mind" },
+    ]);
+  });
+
+  it("extracts mind acknowledgment messages", () => {
+    const messages = [
+      { role: "mind", text: "Noted, I'll keep that in mind." },
+      { role: "user", text: "Hello" },
+    ];
+    const rules = collectConversationBrandRules(messages);
+    expect(rules).toEqual([{ text: "Noted, I'll keep that in mind.", role: "mind" }]);
+  });
+
+  it("limits results to 5 by default", () => {
+    const messages = Array.from({ length: 10 }, (_, i) => ({
+      role: "user",
+      text: `Rule ${i}: I always prefer style ${i}`,
+    }));
+    const rules = collectConversationBrandRules(messages);
+    expect(rules).toHaveLength(5);
+    expect(rules[0].text).toBe("Rule 5: I always prefer style 5");
+  });
+
+  it("respects custom limit", () => {
+    const messages = [
+      { role: "user", text: "I always use bold" },
+      { role: "user", text: "I never use caps" },
+    ];
+    const rules = collectConversationBrandRules(messages, 1);
+    expect(rules).toHaveLength(1);
+  });
+
+  it("ignores system messages", () => {
+    const messages = [
+      { role: "system", text: "Always remember to be creative" },
+      { role: "user", text: "I always use bold" },
+    ];
+    const rules = collectConversationBrandRules(messages);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].role).toBe("user");
   });
 });

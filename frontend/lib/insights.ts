@@ -4,6 +4,11 @@ export type Insight = {
   created_at?: string | null;
 };
 
+export type ConversationBrandRule = {
+  text: string;
+  role: "user" | "mind";
+};
+
 export type BrandRuleEntry = {
   text: string;
   created_at: string | null;
@@ -133,4 +138,37 @@ export function collectInsights(memory: Record<string, unknown>): Insight[] {
   }
 
   return insights;
+}
+
+const PREFERENCE_PATTERNS = [
+  /\b(always|never|must|should|prefer|like|hate|love|want|need|keep|use|don'?t)\b/i,
+];
+
+const ACKNOWLEDGMENT_PATTERNS = [
+  /\b(remember|noted|got it|will do|understood|i'?ll|acknowledged|saved)\b/i,
+];
+
+function isPreferenceMessage(text: string): boolean {
+  return PREFERENCE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isAcknowledgmentMessage(text: string): boolean {
+  return ACKNOWLEDGMENT_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function collectConversationBrandRules(
+  messages: Array<{ role: string; text: string }>,
+  limit = 5,
+): ConversationBrandRule[] {
+  const rules: ConversationBrandRule[] = [];
+
+  for (const message of messages) {
+    if (message.role === "user" && isPreferenceMessage(message.text)) {
+      rules.push({ text: message.text.trim(), role: "user" });
+    } else if (message.role === "mind" && isAcknowledgmentMessage(message.text)) {
+      rules.push({ text: message.text.trim(), role: "mind" });
+    }
+  }
+
+  return rules.slice(-limit);
 }

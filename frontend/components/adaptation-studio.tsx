@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, ClipboardCopy, Download, FlaskConical, Wand2 } from "lucide-react";
 
 import LaunchAbTestModal from "@/components/launch-ab-test-modal";
+import MindRemembersBadge from "@/components/mind-remembers-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,8 +13,10 @@ import {
   Adaptation,
   AdaptationAssets,
   AdaptationThumbnailVariant,
+  ChatMessage,
   fetchAdaptation,
   fetchAdaptations,
+  fetchChatHistory,
   generateAdaptation,
   mediaUrl,
 } from "@/lib/api";
@@ -280,6 +283,7 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [testOpen, setTestOpen] = useState(false);
   const [testVariants, setTestVariants] = useState<AdaptationThumbnailVariant[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const upsert = useCallback((fresh: Adaptation) => {
     setAdaptations((current) => {
@@ -304,6 +308,20 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchChatHistory()
+      .then((result) => {
+        if (!cancelled) setMessages(result.messages);
+      })
+      .catch(() => {
+        if (!cancelled) setMessages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const adaptation =
     adaptations?.find(
@@ -384,6 +402,7 @@ export default function AdaptationStudio({ clipId }: { clipId: string }) {
                       {adaptation.error_message && (
                         <p className="text-xs text-destructive">{adaptation.error_message}</p>
                       )}
+                      <MindRemembersBadge messages={messages} />
                     </>
                   )}
                 </div>

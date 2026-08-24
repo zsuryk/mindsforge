@@ -69,6 +69,9 @@ function stubFetch(adaptations: Adaptation[] = []) {
     "fetch",
     vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.includes("/chat/history")) {
+        return Promise.resolve(jsonResponse({ messages: [] }));
+      }
       if (url.includes("/adaptations") && !url.endsWith("/adaptations")) {
         return Promise.resolve(jsonResponse(adaptations[0]));
       }
@@ -90,6 +93,9 @@ function stubFetchForGenerate({
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push(url);
+      if (url.includes("/chat/history")) {
+        return Promise.resolve(jsonResponse({ messages: [] }));
+      }
       if (init?.method === "POST") {
         return Promise.resolve(jsonResponse(created, 202));
       }
@@ -268,6 +274,9 @@ describe("AdaptationStudio", () => {
     };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/chat/history")) {
+        return Promise.resolve(jsonResponse({ messages: [] }));
+      }
       if (url.includes("/ab-tests/start")) {
         return Promise.resolve(jsonResponse(created, 201));
       }
@@ -339,6 +348,9 @@ describe("AdaptationStudio", () => {
     };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/chat/history")) {
+        return Promise.resolve(jsonResponse({ messages: [] }));
+      }
       if (url.includes("/ab-tests/start")) {
         return Promise.resolve(jsonResponse(created, 201));
       }

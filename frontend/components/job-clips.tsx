@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, FlaskConical } from "lucide-react";
 
+import MindRemembersBadge from "@/components/mind-remembers-badge";
 import { Button } from "@/components/ui/button";
-import { Clip, fetchJobClips, mediaUrl } from "@/lib/api";
+import { ChatMessage, Clip, fetchChatHistory, fetchJobClips, mediaUrl } from "@/lib/api";
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -14,6 +15,7 @@ function formatTime(seconds: number): string {
 
 export default function JobClips({ jobId }: { jobId: string }) {
   const [clips, setClips] = useState<Clip[] | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +30,20 @@ export default function JobClips({ jobId }: { jobId: string }) {
       cancelled = true;
     };
   }, [jobId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchChatHistory()
+      .then((result) => {
+        if (!cancelled) setMessages(result.messages);
+      })
+      .catch(() => {
+        if (!cancelled) setMessages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (clips === null) {
     return <p className="px-6 pb-4 text-xs text-muted-foreground">Loading clips…</p>;
@@ -60,6 +76,9 @@ export default function JobClips({ jobId }: { jobId: string }) {
                 {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
               </p>
               <p className="line-clamp-2 text-xs text-muted-foreground">{clip.transcript_text}</p>
+            </div>
+            <div className="mt-3">
+              <MindRemembersBadge messages={messages} />
             </div>
             <Button variant="secondary" size="sm" asChild className="mt-4">
               <a href={`/clips/${clip.id}`}>
