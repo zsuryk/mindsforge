@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Brain, Lightbulb, PencilLine, RefreshCw } from "lucide-react";
+import {
+  Brain,
+  ChevronDown,
+  ChevronRight,
+  Lightbulb,
+  Pause,
+  PencilLine,
+  Play,
+  RefreshCw,
+  TrendingUp,
+} from "lucide-react";
 
 import { JsonTree } from "@/components/json-tree";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,8 +24,13 @@ import { SystemMessageToggle } from "@/components/system-message-toggle";
 import {
   AgentMemory,
   ChatMessage,
+  TrendResult,
+  WeeklyTrendsStatus,
   fetchAgentMemory,
   fetchChatHistory,
+  fetchWeeklyTrendsStatus,
+  toggleWeeklyTrends,
+  triggerWeeklyTrendsRun,
   updateAgentMemory,
 } from "@/lib/api";
 import { collectInsights } from "@/lib/insights";
@@ -30,6 +45,105 @@ function parseValueInput(raw: string): unknown {
   } catch {
     return trimmed;
   }
+}
+
+type TrendEntry = {
+  query: string;
+  platform: string | null;
+  source: string;
+  results: TrendResult[];
+  researched_at: string;
+};
+
+const PLATFORM_LABELS: Record<string, string> = {
+  youtube: "YouTube",
+  tiktok: "TikTok",
+  x: "X",
+};
+
+function TrendEntryRow({
+  entry,
+  expanded,
+  onToggle,
+}: {
+  entry: TrendEntry;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const date = entry.researched_at
+    ? new Date(entry.researched_at).toLocaleDateString()
+    : "—";
+  const platformLabel = entry.platform
+    ? PLATFORM_LABELS[entry.platform] ?? entry.platform
+    : "All";
+  const sourceBadge =
+    entry.source === "weekly" ? (
+      <Badge variant="secondary" className="text-xs">
+        auto
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="text-xs">
+        manual
+      </Badge>
+    );
+
+  return (
+    <div className="border-b border-border/40 last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-secondary/30"
+      >
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+        <span className="font-medium text-foreground">{date}</span>
+        <Badge variant="outline" className="text-xs">
+          {platformLabel}
+        </Badge>
+        {sourceBadge}
+        <span className="ml-auto text-xs text-muted-foreground">
+          {entry.results.length} results
+        </span>
+      </button>
+      {expanded && (
+        <div className="space-y-2 px-4 pb-4 pl-11">
+          <p className="text-xs font-medium text-muted-foreground">
+            &apos;{entry.query}&apos;
+          </p>
+          {entry.results.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No results.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {entry.results.map((result, i) => (
+                <li key={i} className="text-xs">
+                  <span className="font-medium text-foreground">
+                    {result.title}
+                  </span>
+                  <a
+                    href={result.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-1 text-primary underline-offset-2 hover:underline"
+                  >
+                    link
+                  </a>
+                  {result.content && (
+                    <p className="mt-0.5 line-clamp-2 text-muted-foreground">
+                      {result.content.slice(0, 200)}
+                      {result.content.length > 200 && "…"}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ChatHistoryRow({ message }: { message: ChatMessage }) {
@@ -74,16 +188,23 @@ export default function MemoryInspectorPage() {
   const [value, setValue] = useState("");
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [weeklyStatus, setWeeklyStatus] = useState<WeeklyTrendsStatus | null>(
+    null,
+  );
+  const [runningWeekly, setRunningWeekly] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [memory, history] = await Promise.all([
+      const [memory, history, status] = await Promise.all([
         fetchAgentMemory(),
         fetchChatHistory(),
+        fetchWeeklyTrendsStatus(),
       ]);
       setAgentMemory(memory);
       setChatHistory(history.messages);
+      setWeeklyStatus(status);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load memory");
@@ -120,7 +241,52 @@ export default function MemoryInspectorPage() {
     }
   };
 
+  const handleRunWeekly = async () => {
+    setRunningWeekly(true);
+    try {
+      await triggerWeeklyTrendsRun();
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to run weekly trends",
+      );
+    } finally {
+      setRunningWeekly(false);
+    }
+  };
+
+  const handleTogglePause = async () => {
+    if (!weeklyStatus) return;
+    try {
+      const newStatus = await toggleWeeklyTrends(!weeklyStatus.paused);
+      setWeeklyStatus(newStatus);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to toggle weekly trends",
+      );
+    }
+  };
+
+  const toggleRow = (index: number) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
   const insights = agentMemory ? collectInsights(agentMemory.memory) : [];
+  const trendHistory: TrendEntry[] =
+    agentMemory &&
+    Array.isArray(agentMemory.memory.trend_research)
+      ? (agentMemory.memory.trend_research as TrendEntry[])
+          .slice()
+          .reverse()
+      : [];
   const { showSystem, toggle, systemCount, filtered } = useSystemMessageFilter(chatHistory);
 
   return (
@@ -188,6 +354,86 @@ export default function MemoryInspectorPage() {
                   ))}
                 </div>
               )}
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-foreground">
+                  Weekly Trends
+                </h2>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRunWeekly}
+                    disabled={runningWeekly}
+                  >
+                    <TrendingUp
+                      className={cn(runningWeekly && "animate-pulse")}
+                    />
+                    {runningWeekly ? "Running…" : "Run now"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTogglePause}
+                    disabled={!weeklyStatus}
+                  >
+                    {weeklyStatus?.paused ? (
+                      <>
+                        <Play className="h-3 w-3" /> Resume
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="h-3 w-3" /> Pause
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {weeklyStatus && (
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>
+                    Last run:{" "}
+                    {weeklyStatus.last_run
+                      ? new Date(weeklyStatus.last_run).toLocaleString()
+                      : "never"}
+                  </span>
+                  <span>
+                    Next run:{" "}
+                    {weeklyStatus.paused
+                      ? "paused"
+                      : weeklyStatus.next_run
+                        ? new Date(weeklyStatus.next_run).toLocaleString()
+                        : "—"}
+                  </span>
+                </div>
+              )}
+
+              <Card>
+                <CardContent className="p-0">
+                  {trendHistory.length === 0 ? (
+                    <div className="p-6">
+                      <p className="text-sm text-muted-foreground">
+                        No trend research yet — run weekly trends or search from
+                        chat to see results here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      {trendHistory.map((entry, index) => (
+                        <TrendEntryRow
+                          key={index}
+                          entry={entry}
+                          expanded={expandedRows.has(index)}
+                          onToggle={() => toggleRow(index)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </section>
 
             <Card>

@@ -8,6 +8,8 @@ from app.schemas.chat import (
     ChatSendOut,
     TrendResearchIn,
     TrendResearchOut,
+    WeeklyTrendsStatusOut,
+    WeeklyTrendsToggleIn,
 )
 from app.services import minds, trends
 
@@ -60,3 +62,27 @@ def research_chat_trends(payload: TrendResearchIn) -> TrendResearchOut:
     except (trends.TrendSearchError, minds.MindsError) as exc:
         _raise_upstream_error(exc)
     return TrendResearchOut(results=[result.model_dump() for result in results])
+
+
+@router.post("/chat/trends/weekly-run", response_model=TrendResearchOut)
+def trigger_weekly_trends_run() -> TrendResearchOut:
+    try:
+        all_results = trends.weekly_trend_research()
+    except (trends.TrendSearchError, minds.MindsError) as exc:
+        _raise_upstream_error(exc)
+    flat = [r for results in all_results.values() for r in results]
+    return TrendResearchOut(results=[result.model_dump() for result in flat])
+
+
+@router.get("/chat/trends/weekly-status", response_model=WeeklyTrendsStatusOut)
+def get_weekly_trends_status() -> WeeklyTrendsStatusOut:
+    return WeeklyTrendsStatusOut(**trends.get_weekly_trends_status())
+
+
+@router.post("/chat/trends/weekly-toggle", response_model=WeeklyTrendsStatusOut)
+def toggle_weekly_trends(payload: WeeklyTrendsToggleIn) -> WeeklyTrendsStatusOut:
+    try:
+        status = trends.toggle_weekly_trends(payload.paused)
+    except minds.MindsError as exc:
+        _raise_upstream_error(exc)
+    return WeeklyTrendsStatusOut(**status)

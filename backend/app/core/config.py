@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     PROCESS_JOBS_ON_SUBMIT: bool = True
     AB_TEST_INTERVAL_SECONDS: int = 60
     AB_TEST_VIEW_THRESHOLD: int = 1000
+    WEEKLY_TRENDS_CHECK_INTERVAL: int = 3600
+    WEEKLY_TRENDS_STALENESS: int = 604800
 
     LOG_LEVEL: str = "INFO"
 

@@ -36,3 +36,13 @@ class TrendResultOut(BaseModel):
 
 class TrendResearchOut(BaseModel):
     results: list[TrendResultOut]
+
+
+class WeeklyTrendsStatusOut(BaseModel):
+    last_run: str | None = None
+    paused: bool = False
+    next_run: str | None = None
+
+
+class WeeklyTrendsToggleIn(BaseModel):
+    paused: bool

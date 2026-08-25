@@ -15,11 +15,19 @@ TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 HTTP_TIMEOUT_SECONDS = 30.0
 
 TREND_RESEARCH_KEY = "trend_research"
-TREND_RESEARCH_MAX_ENTRIES = 10
+TREND_RESEARCH_MAX_ENTRIES = 20
 TREND_NOTIFICATION_RESULTS = 3
 TREND_BLOCK_MAX_ENTRIES = 5
 TREND_BLOCK_MAX_AGE_DAYS = 7
 TREND_BLOCK_CONTENT_CHARS = 200
+
+WEEKLY_TRENDS_LAST_RUN_KEY = "weekly_trends_last_run"
+WEEKLY_TRENDS_PAUSED_KEY = "weekly_trends_paused"
+WEEKLY_PLATFORM_QUERIES: dict[str, str] = {
+    "youtube": "youtube shorts trending this week",
+    "tiktok": "tiktok viral trends this week",
+    "x": "x twitter trending topics this week",
+}
 
 # "search for X", "search trends for X", "search trends in X", …
 TREND_TRIGGER_PATTERN = re.compile(
@@ -83,11 +91,13 @@ def search_trends(query: str, max_results: int = 5) -> list[TrendResult]:
     ]
 
 
-def research_trends(query: str, platform: str | None = None) -> list[TrendResult]:
+def research_trends(
+    query: str, platform: str | None = None, *, source: str = "manual"
+) -> list[TrendResult]:
     """Search the web and land the results where they matter.
 
     Runs the search, appends the results to the Mind's `trend_research` memory
-    key (bounded to the latest 10 entries), posts a system-marked notification
+    key (bounded to the latest 20 entries), posts a system-marked notification
     to the chat thread so the Mind answers grounded in live data, and returns
     the results for the UI chip.
 
@@ -98,12 +108,12 @@ def research_trends(query: str, platform: str | None = None) -> list[TrendResult
     agent_id = get_settings().MINDS_AGENT_ID
     if not agent_id:
         raise minds.MindsConfigError("MINDS_AGENT_ID is not configured")
-    _persist_trend_research(agent_id, query, platform, results)
+    _persist_trend_research(agent_id, query, platform, results, source=source)
     minds.post_chat_notification(_notification_text(query, results))
     activity.log(
         "trend-researched",
         f"Researched '{query}' — {len(results)} results",
-        detail={"platform": platform},
+        detail={"platform": platform, "source": source},
     )
     return results
 
@@ -113,6 +123,8 @@ def _persist_trend_research(
     query: str,
     platform: str | None,
     results: list[TrendResult],
+    *,
+    source: str = "manual",
 ) -> None:
     memory = minds.fetch_memory(agent_id)
     history = memory.get(TREND_RESEARCH_KEY)
@@ -122,6 +134,7 @@ def _persist_trend_research(
         {
             "query": query,
             "platform": platform,
+            "source": source,
             "results": [result.model_dump() for result in results],
             "researched_at": datetime.now(UTC).isoformat(),
         }
@@ -187,3 +200,86 @@ def build_trend_block(memory: dict[str, Any]) -> str | None:
             if content:
                 lines.append(f"     {content}")
     return "\n".join(lines)
+
+
+def weekly_trend_research() -> dict[str, list[TrendResult]]:
+    """Run trend research for all platforms on the weekly schedule.
+
+    Checks if weekly trends are paused, searches each platform using the
+    default queries, persists results with source='weekly', posts an
+    aggregated notification, and updates the last-run timestamp.
+
+    Returns a dict mapping platform name to its results.
+    """
+    agent_id = get_settings().MINDS_AGENT_ID
+    if not agent_id:
+        raise minds.MindsConfigError("MINDS_AGENT_ID is not configured")
+
+    memory = minds.fetch_memory(agent_id)
+    if memory.get(WEEKLY_TRENDS_PAUSED_KEY) is True:
+        return {}
+
+    all_results: dict[str, list[TrendResult]] = {}
+    for platform, query in WEEKLY_PLATFORM_QUERIES.items():
+        try:
+            results = search_trends(query)
+            _persist_trend_research(agent_id, query, platform, results, source="weekly")
+            all_results[platform] = results
+        except TrendSearchError as exc:
+            logger.warning("Weekly trend search failed for %s: %s", platform, exc)
+
+    if all_results:
+        summary_parts = []
+        for platform, results in all_results.items():
+            summary_parts.append(f"{platform}: {len(results)} results")
+        summary = ", ".join(summary_parts)
+        minds.post_chat_notification(
+            f"Weekly trend research complete — {summary}"
+        )
+        activity.log(
+            "weekly-trend-research",
+            f"Weekly trends — {summary}",
+        )
+
+    minds.update_memory(
+        agent_id, WEEKLY_TRENDS_LAST_RUN_KEY, datetime.now(UTC).isoformat()
+    )
+    return all_results
+
+
+def get_weekly_trends_status() -> dict[str, Any]:
+    """Return the current status of the weekly trends scheduler."""
+    agent_id = get_settings().MINDS_AGENT_ID
+    if not agent_id:
+        return {"last_run": None, "paused": False, "next_run": None}
+
+    memory = minds.fetch_memory(agent_id)
+    last_run_raw = memory.get(WEEKLY_TRENDS_LAST_RUN_KEY)
+    paused = memory.get(WEEKLY_TRENDS_PAUSED_KEY) is True
+
+    last_run: str | None = None
+    next_run: str | None = None
+    if isinstance(last_run_raw, str):
+        last_run = last_run_raw
+        try:
+            last_dt = datetime.fromisoformat(last_run_raw)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=UTC)
+            from app.core.config import get_settings as _gs
+
+            stale = _gs().WEEKLY_TRENDS_STALENESS
+            next_dt = last_dt + timedelta(seconds=stale)
+            next_run = next_dt.isoformat()
+        except ValueError:
+            pass
+
+    return {"last_run": last_run, "paused": paused, "next_run": next_run}
+
+
+def toggle_weekly_trends(paused: bool) -> dict[str, Any]:
+    """Enable or disable the weekly trends scheduler."""
+    agent_id = get_settings().MINDS_AGENT_ID
+    if not agent_id:
+        raise minds.MindsConfigError("MINDS_AGENT_ID is not configured")
+    minds.update_memory(agent_id, WEEKLY_TRENDS_PAUSED_KEY, paused)
+    return get_weekly_trends_status()

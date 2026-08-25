@@ -72,6 +72,10 @@ _Avoid_: preference, style directive
 A Tavily-backed web search run from the chat whose results are saved to the Mind's memory (`trend_research`) and inform adaptation generation.
 _Avoid_: trend search, research query
 
+**Weekly trend research**:
+Automated recurring search that runs for each platform (YouTube, TikTok, X) on a configurable interval. Results are persisted to the same `trend_research` memory key with `source: "weekly"`. Can be paused or triggered manually from the Memory Inspector.
+_Avoid_: automatic trends, scheduled trends, cron trends
+
 **Mind activity**:
 A logged record of the Mind's background work (scoring, experiment sweeps, conclusions, adaptations, research), surfaced on the dashboard feed.
 _Avoid_: event, audit log

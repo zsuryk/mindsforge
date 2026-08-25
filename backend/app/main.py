@@ -18,7 +18,7 @@ from app.api.memory import router as memory_router
 from app.core.config import get_settings
 from app.db.base import get_session_factory, init_db
 from app.models.job import IN_PROGRESS_STATUSES, Job, JobStatus
-from app.services import ab_testing
+from app.services import ab_testing, trends
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,41 @@ async def _ab_worker_loop() -> None:
             await asyncio.to_thread(ab_testing.refresh_active_experiments)
         except Exception as exc:  # noqa: BLE001 - a bad sweep must not kill the loop
             logger.exception("A/B worker sweep failed: %s", exc)
+
+
+async def _weekly_trends_loop() -> None:
+    """Hourly staleness check for weekly trend research. Wakes every
+    WEEKLY_TRENDS_CHECK_INTERVAL seconds, and if the last weekly run
+    is older than WEEKLY_TRENDS_STALENESS, triggers a full platform sweep."""
+    interval = settings.WEEKLY_TRENDS_CHECK_INTERVAL
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await asyncio.to_thread(_check_and_run_weekly_trends)
+        except Exception as exc:  # noqa: BLE001 - a failed sweep must not kill the loop
+            logger.exception("Weekly trends check failed: %s", exc)
+
+
+def _check_and_run_weekly_trends() -> None:
+    """Synchronous helper: check staleness and run weekly trends if stale."""
+    from datetime import UTC, datetime, timedelta
+
+    status = trends.get_weekly_trends_status()
+    if status.get("paused"):
+        return
+    last_run_raw = status.get("last_run")
+    if isinstance(last_run_raw, str):
+        try:
+            last_run = datetime.fromisoformat(last_run_raw)
+            if last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=UTC)
+            if datetime.now(UTC) - last_run < timedelta(
+                seconds=settings.WEEKLY_TRENDS_STALENESS
+            ):
+                return
+        except ValueError:
+            pass
+    trends.weekly_trend_research()
 
 
 def _recover_orphaned_jobs() -> None:
@@ -84,12 +119,18 @@ async def lifespan(app: FastAPI):
         name="media",
     )
     ab_worker = asyncio.create_task(_ab_worker_loop())
+    weekly_trends = asyncio.create_task(_weekly_trends_loop())
     try:
         yield
     finally:
         ab_worker.cancel()
+        weekly_trends.cancel()
         try:
             await ab_worker
+        except asyncio.CancelledError:
+            pass
+        try:
+            await weekly_trends
         except asyncio.CancelledError:
             pass
 

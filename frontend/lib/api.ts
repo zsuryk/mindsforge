@@ -451,3 +451,43 @@ export async function researchTrends(
   }
   return res.json();
 }
+
+export type WeeklyTrendsStatus = {
+  last_run: string | null;
+  paused: boolean;
+  next_run: string | null;
+};
+
+export async function fetchWeeklyTrendsStatus(): Promise<WeeklyTrendsStatus> {
+  const res = await fetch(`${API_URL}/chat/trends/weekly-status`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function triggerWeeklyTrendsRun(): Promise<{ results: TrendResult[] }> {
+  const res = await fetch(`${API_URL}/chat/trends/weekly-run`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function toggleWeeklyTrends(
+  paused: boolean,
+): Promise<WeeklyTrendsStatus> {
+  const res = await fetch(`${API_URL}/chat/trends/weekly-toggle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paused }),
+  });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
