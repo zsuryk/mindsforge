@@ -1,6 +1,7 @@
 import logging
 import random
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -78,16 +79,22 @@ def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
     The verdict call is fail-closed: any MindsError (unconfigured builder,
     network failure, unparseable or invalid verdict) raises so the caller
     can transition the experiment to FAILED — no Python max-CTR fallback.
+
+    A fresh conversation alias isolates the verdict prompt from the shared
+    ``mindsforge`` conversation, preventing the Mind from accumulating
+    context that causes prose replies instead of structured JSON.
     """
     clip = experiment.clip
     if clip is None:
         raise RuntimeError("Experiment references a missing clip")
     chat_context = minds.build_chat_context()
+    verdict_alias = f"{minds.MESSAGING_ALIAS}-verdict-{uuid4().hex[:12]}"
     verdict = minds.decide_experiment_winner(
         platform=experiment.platform,
         variants=[dict(variant) for variant in (experiment.variants or [])],
         transcript=clip.transcript_text,
         chat_context=chat_context,
+        conversation_alias=verdict_alias,
     )
     experiment.winning_variant_id = verdict.winning_variant_id
     experiment.learned_insight = verdict.reasoning

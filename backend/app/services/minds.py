@@ -786,15 +786,21 @@ def decide_experiment_winner(
     transcript: str,
     *,
     chat_context: str | None = None,
+    conversation_alias: str | None = None,
 ) -> ExperimentVerdict:
     """Ask the Mind to pick the winning variant of a concluded experiment.
+
+    ``conversation_alias`` isolates this prompt in its own conversation when
+    provided, preventing the Mind from accumulating context that causes prose
+    replies instead of the structured JSON verdict.
 
     Raises MindsError on any failure (missing credentials, HTTP errors,
     unparseable verdicts, unknown winner ids, empty reasoning) so callers
     can fail the experiment closed instead of falling back to metrics.
     """
+    alias = conversation_alias or MESSAGING_ALIAS
     prompt = _build_winner_prompt(platform, variants, transcript, chat_context)
-    message = _message_mind(_agent_id(), prompt)
+    message = _message_mind(_agent_id(), prompt, alias=alias)
     if not isinstance(message, str) or not message.strip():
         raise MindsError("Experiment verdict response missing 'response' text")
     verdict = _parse_winner_verdict(message)
