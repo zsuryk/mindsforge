@@ -640,6 +640,51 @@ def test_decide_experiment_winner_raises_on_empty_reply(
         minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
 
 
+def test_decide_experiment_winner_two_step_flow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    call_count = 0
+
+    def fake_message_mind(agent_id, prompt, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return (
+                "Looking at the three variants, variant v1 with its hook-driven "
+                "title clearly outperformed the others. The 5% CTR versus 2% "
+                "shows viewers responded to the stronger opening."
+            )
+        return '{"winning_variant_id": "v1", "reasoning": "Hook A held viewers longer; reuse this formula."}'
+
+    monkeypatch.setattr(minds, "_message_mind", fake_message_mind)
+
+    verdict = minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+    assert verdict.winning_variant_id == "v1"
+    assert "reuse this formula" in verdict.reasoning
+    assert call_count == 2
+
+
+def test_decide_experiment_winner_skips_fill_when_read_is_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_minds(monkeypatch)
+    call_count = 0
+
+    def fake_message_mind(agent_id, prompt, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return '{"winning_variant_id": "v2", "reasoning": "debate-style hook won."}'
+
+    monkeypatch.setattr(minds, "_message_mind", fake_message_mind)
+
+    verdict = minds.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+    assert verdict.winning_variant_id == "v2"
+    assert call_count == 1
+
+
 CLIP = {
     "id": "clip-1",
     "title": "My clip",

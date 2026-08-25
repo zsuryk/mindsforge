@@ -777,8 +777,7 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
     assert isinstance(prompt, str)
     assert "thumbnail: /media/adaptations/adapt-1/thumb_1.png" in prompt
     assert "thumbnail: /media/adaptations/adapt-1/thumb_2.png" in prompt
-    assert "experiment analyst" in prompt
-    assert "learned insight" in prompt
+    assert "A/B experiment" in prompt
     assert "A/B testing analyst" not in prompt
     assert "lesson" not in prompt
 

@@ -732,7 +732,7 @@ def generate_clip_metadata(
         return _parse_metadata(message)
 
 
-def _build_winner_prompt(
+def _build_winner_read_prompt(
     platform: str,
     variants: list[dict[str, Any]],
     transcript: str,
@@ -749,10 +749,10 @@ def _build_winner_prompt(
         for variant in variants
     )
     return (
-        "You are an experiment analyst working with a creator. "
-        "An experiment on one of the creator's clips just crossed its view "
-        "threshold; study the variants and the clip transcript, then pick the "
-        "winning variant and explain why.\n\n"
+        "I need your honest read on an A/B experiment. You are not fabricating "
+        "anything: study the variants and the clip transcript, then tell me "
+        "which variant won and why. A clear reasoning grounded in the data is "
+        "what matters.\n\n"
         f"Platform: {platform}\n\n"
         f"Clip transcript:\n{transcript}\n\n"
         "Experiment variants (thumbnail is the rendered thumbnail file path "
@@ -760,11 +760,25 @@ def _build_winner_prompt(
         f"{variant_lines}\n\n"
         "Creator conversation context (brand voice and past learnings):\n"
         f"{context_block}\n\n"
-        "Respond with ONLY a JSON object, no markdown fences, with exactly this shape:\n"
-        "{\n"
-        '  "winning_variant_id": "the id of the winning variant from the list above",\n'
-        '  "reasoning": "2-3 sentences: why this variant won and what to reuse next time"\n'
-        "}\n"
+        "Give me your read in prose: which variant should win, why it "
+        "outperformed the others, and what the creator should reuse next time. "
+        "I will then ask you to convert it into a structured verdict."
+    )
+
+
+_EXPERIMENT_VERDICT_SCHEMA = (
+    "{\n"
+    '  "winning_variant_id": "the id of the winning variant from the list above",\n'
+    '  "reasoning": "2-3 sentences: why this variant won and what to reuse next time"\n'
+    "}"
+)
+
+
+def _build_winner_fill_prompt() -> str:
+    return (
+        "Here is the schema for the experiment verdict. Fill it in with your "
+        "read from your last message:\n"
+        f"{_EXPERIMENT_VERDICT_SCHEMA}\n\n"
         "Rules:\n"
         "- winning_variant_id must exactly match one of the variant_id values above.\n"
         "- reasoning must be non-empty and grounded in the variant metrics and clip content.\n"
@@ -790,6 +804,12 @@ def decide_experiment_winner(
 ) -> ExperimentVerdict:
     """Ask the Mind to pick the winning variant of a concluded experiment.
 
+    The Mind answers in two steps: first an honest prose read — which it gives
+    readily even when accumulated context causes refusals on direct JSON
+    prompts — then a schema-fill message converting that read into the
+    structured verdict. A single-message JSON-only prompt reads as "fabricate
+    a verdict" to the Mind and triggers refusals that fail the experiment.
+
     ``conversation_alias`` isolates this prompt in its own conversation when
     provided, preventing the Mind from accumulating context that causes prose
     replies instead of the structured JSON verdict.
@@ -799,11 +819,19 @@ def decide_experiment_winner(
     can fail the experiment closed instead of falling back to metrics.
     """
     alias = conversation_alias or MESSAGING_ALIAS
-    prompt = _build_winner_prompt(platform, variants, transcript, chat_context)
-    message = _message_mind(_agent_id(), prompt, alias=alias)
-    if not isinstance(message, str) or not message.strip():
+    agent_id = _agent_id()
+    read_prompt = _build_winner_read_prompt(platform, variants, transcript, chat_context)
+    read = _message_mind(agent_id, read_prompt, alias=alias)
+    if not isinstance(read, str) or not read.strip():
         raise MindsError("Experiment verdict response missing 'response' text")
-    verdict = _parse_winner_verdict(message)
+    try:
+        verdict = _parse_winner_verdict(read)
+    except MindsError:
+        fill = _build_winner_fill_prompt()
+        message = _message_mind(agent_id, fill, alias=alias)
+        if not isinstance(message, str) or not message.strip():
+            raise MindsError("Experiment verdict response missing 'response' text")
+        verdict = _parse_winner_verdict(message)
     known_ids = {
         str(variant.get("variant_id"))
         for variant in variants
