@@ -143,6 +143,7 @@ describe("JobsPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse([makeJob({ status: "COMPLETED" })]))
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
       .mockResolvedValueOnce(
         jsonResponse([
           {

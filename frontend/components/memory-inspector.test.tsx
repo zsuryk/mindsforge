@@ -75,6 +75,8 @@ describe("MemoryInspectorPage", () => {
     let memoryCallCount = 0;
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/chat/history")) return jsonResponse(chatHistory);
+      if (url.includes("/chat/trends/weekly-status"))
+        return jsonResponse({ last_run: null, paused: false, next_run: null });
       memoryCallCount++;
       if (memoryCallCount === 2) return jsonResponse({ ...agentMemory, agent_id: "agent-2" });
       return jsonResponse(agentMemory);
@@ -87,7 +89,7 @@ describe("MemoryInspectorPage", () => {
     await user.click(screen.getByRole("button", { name: /refresh/i }));
 
     expect(await screen.findByText("agent-2")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
   it("shows a clear error when the memory fetch fails", async () => {
