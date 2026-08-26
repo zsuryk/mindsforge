@@ -6,8 +6,8 @@
 
 **Status:** done (45e4a53)
 
-- [ ] Dashboard header + system status badge + URL input bar that kicks off a job
-- [ ] Four metric cards read from live aggregates; counts stay correct as jobs/clips/experiments change
-- [ ] Recent jobs table with animated status badges, linked to job detail
-- [ ] Empty states render gracefully before any data exists
-- [ ] End-to-end walkthrough works: submit URL → watch job → saw clips → launch A/B → numbers on the dashboard move
+- [x] Dashboard header + system status badge + URL input bar that kicks off a job
+- [x] Four metric cards read from live aggregates; counts stay correct as jobs/clips/experiments change
+- [x] Recent jobs table with animated status badges, linked to job detail
+- [x] Empty states render gracefully before any data exists
+- [x] End-to-end walkthrough works: submit URL → watch job → saw clips → launch A/B → numbers on the dashboard move

@@ -6,9 +6,9 @@
 
 **Status:** done (347ef54)
 
-- [ ] Experiment model + start endpoint persist a multi-variant experiment with thumbnail paths; launch modal from ticket 05 works end-to-end
-- [ ] Active experiments endpoint returns active + recently concluded experiments
-- [ ] Background worker updates simulated views/CTR on a configurable interval and concludes experiments past the view threshold, selecting highest CTR
-- [ ] Conclusion writes winner id, `concluded_at`, flag status CONCLUDED, and persists a generated insight via the Minds memory update
-- [ ] Experiments page: variant cards with live view counts, CTR comparison chart, concluded insight banner
-- [ ] A launched experiment runs to conclusion unattended and its insight appears in memory
+- [x] Experiment model + start endpoint persist a multi-variant experiment with thumbnail paths; launch modal from ticket 05 works end-to-end
+- [x] Active experiments endpoint returns active + recently concluded experiments
+- [x] Background worker updates simulated views/CTR on a configurable interval and concludes experiments past the view threshold, selecting highest CTR
+- [x] Conclusion writes winner id, `concluded_at`, flag status CONCLUDED, and persists a generated insight via the Minds memory update
+- [x] Experiments page: variant cards with live view counts, CTR comparison chart, concluded insight banner
+- [x] A launched experiment runs to conclusion unattended and its insight appears in memory

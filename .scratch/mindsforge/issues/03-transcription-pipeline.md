@@ -6,9 +6,9 @@
 
 **Status:** done (ea57ca1)
 
-- [ ] A submitted job starts processing automatically in the background and its status transitions through DOWNLOADING and TRANSCRIBING
-- [ ] URL jobs download via yt-dlp into raw storage; upload jobs read the local file
-- [ ] FFmpeg audio extraction produces a Whisper-ready 16kHz mono WAV
-- [ ] Groq transcription returns segments with text, start, and end times, stored on the job
-- [ ] Any stage failure leaves the job FAILED with a descriptive error message, and the pipeline stops cleanly
-- [ ] A short real video (e.g. a few minutes) can be transcribed end-to-end; the UI shows the live status transition
+- [x] A submitted job starts processing automatically in the background and its status transitions through DOWNLOADING and TRANSCRIBING
+- [x] URL jobs download via yt-dlp into raw storage; upload jobs read the local file
+- [x] FFmpeg audio extraction produces a Whisper-ready 16kHz mono WAV
+- [x] Groq transcription returns segments with text, start, and end times, stored on the job
+- [x] Any stage failure leaves the job FAILED with a descriptive error message, and the pipeline stops cleanly
+- [x] A short real video (e.g. a few minutes) can be transcribed end-to-end; the UI shows the live status transition

@@ -4,8 +4,8 @@
 
 **Blocked by:** 02 — Remove Groq brand-rule extraction sidecar
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Remove `rules: string[]` from `ChatSendResult` in `frontend/lib/api.ts`
-- [ ] Verify no frontend code references `ChatSendResult.rules` (the chat UI previously rendered a rules confirmation chip)
-- [ ] Run typecheck to confirm no regressions
+- [x] Remove `rules: string[]` from `ChatSendResult` in `frontend/lib/api.ts`
+- [x] Verify no frontend code references `ChatSendResult.rules` (the chat UI previously rendered a rules confirmation chip)
+- [x] Run typecheck to confirm no regressions

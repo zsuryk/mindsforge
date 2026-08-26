@@ -4,12 +4,12 @@
 
 **Blocked by:** 03 — YouTube Long-form preview, 04 — TikTok preview, 05 — X preview
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Update `manifestPanels()` in `frontend/components/adaptation-studio.tsx` to exclude visual feature keys: `platform_hooks`, `poll`, `quiz`, `stickers`, `pinned_comment`, `overlay_spec`, `caption_style`, `chapters`, `thumbnail_briefs`
-- [ ] Keep non-visual CopyBlock panels: `tags`, `hashtags`, `caption`, `shorts_link`
-- [ ] Verify adaptation studio still renders correctly with reduced panel set
-- [ ] Wire copy icons in preview components to `navigator.clipboard.writeText()`
-- [ ] Add copy feedback (brief "Copied" tooltip or icon change) on preview copy icons
-- [ ] Update existing `adaptation-studio.test.tsx` to reflect removed panels
-- [ ] Add test: preview copy icons write correct text to clipboard
+- [x] Update `manifestPanels()` in `frontend/components/adaptation-studio.tsx` to exclude visual feature keys: `platform_hooks`, `poll`, `quiz`, `stickers`, `pinned_comment`, `overlay_spec`, `caption_style`, `chapters`, `thumbnail_briefs`
+- [x] Keep non-visual CopyBlock panels: `tags`, `hashtags`, `caption`, `shorts_link`
+- [x] Verify adaptation studio still renders correctly with reduced panel set
+- [x] Wire copy icons in preview components to `navigator.clipboard.writeText()`
+- [x] Add copy feedback (brief "Copied" tooltip or icon change) on preview copy icons
+- [x] Update existing `adaptation-studio.test.tsx` to reflect removed panels
+- [x] Add test: preview copy icons write correct text to clipboard

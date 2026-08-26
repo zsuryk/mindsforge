@@ -4,7 +4,7 @@
 
 **Blocked by:** 13 — Adaptation studio UI
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## Implementation tickets
 

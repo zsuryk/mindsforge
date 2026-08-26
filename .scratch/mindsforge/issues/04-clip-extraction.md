@@ -6,9 +6,9 @@
 
 **Status:** done (12d4e62)
 
-- [ ] Transcript segments split into candidate clips (short-form duration bounds, sentence-boundary aware)
-- [ ] Each candidate is cut into an MP4 (re-encoded H.264) and gets a thumbnail frame extraction
-- [ ] Clip records persist with all spec fields; job transitions to COMPLETED when clips are done
-- [ ] Clips endpoint returns clips for a job; clip detail endpoint works
-- [ ] Jobs page shows a job's extracted clips with an HTML5 video preview
-- [ ] A full run on the T3 test video yields playable clips with thumbnails
+- [x] Transcript segments split into candidate clips (short-form duration bounds, sentence-boundary aware)
+- [x] Each candidate is cut into an MP4 (re-encoded H.264) and gets a thumbnail frame extraction
+- [x] Clip records persist with all spec fields; job transitions to COMPLETED when clips are done
+- [x] Clips endpoint returns clips for a job; clip detail endpoint works
+- [x] Jobs page shows a job's extracted clips with an HTML5 video preview
+- [x] A full run on the T3 test video yields playable clips with thumbnails

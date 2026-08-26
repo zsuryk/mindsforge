@@ -13,9 +13,9 @@ Prompt includes creator memory context; on success append an `adaptation_history
 
 **Status:** done (cbf3c81)
 
-- [ ] `Platform`/`Surface` vocabulary in schemas (platform strings stay `youtube|tiktok|x`; `youtube` gets two surfaces)
-- [ ] `clip_adaptations` model + Alembic migration + API: list, generate (202 + background task), get-by-id
-- [ ] `minds.generate_adaptation_features` prompt per surface with structured-verdict parsing + validation, MindsError conventions
-- [ ] Lazy generation service with status transitions, error handling, and READY/PENDING cache semantics
-- [ ] `adaptation_history` write-back on success + included in memory context on subsequent generations
-- [ ] Tests: lifecycle (PENDING→READY, FAILED on Minds error, no duplicate generation while cached), per-surface manifest shapes, memory write-back content
+- [x] `Platform`/`Surface` vocabulary in schemas (platform strings stay `youtube|tiktok|x`; `youtube` gets two surfaces)
+- [x] `clip_adaptations` model + Alembic migration + API: list, generate (202 + background task), get-by-id
+- [x] `minds.generate_adaptation_features` prompt per surface with structured-verdict parsing + validation, MindsError conventions
+- [x] Lazy generation service with status transitions, error handling, and READY/PENDING cache semantics
+- [x] `adaptation_history` write-back on success + included in memory context on subsequent generations
+- [x] Tests: lifecycle (PENDING→READY, FAILED on Minds error, no duplicate generation while cached), per-surface manifest shapes, memory write-back content
