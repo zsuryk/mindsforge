@@ -22,6 +22,8 @@ function makeReadyAdaptation(): Adaptation {
     features: {
       chapters: [{ title: "The hook", timestamp: 2.0 }],
       tags: ["editing", "storytime"],
+      hashtags: ["#viral", "#fyp"],
+      caption: "Check out this twist!",
       poll: { question: "Which ending?", options: ["A", "B"] },
       quiz: [{ question: "What changed?", answer: "Everything" }],
       thumbnail_briefs: [
@@ -143,11 +145,11 @@ describe("AdaptationStudio", () => {
 
     expect(await screen.findByText("READY")).toBeInTheDocument();
 
-    expect(await screen.findByText("The hook — 0:02")).toBeInTheDocument();
-    expect(screen.getByText(/Question: Which ending\?/)).toBeInTheDocument();
-    expect(screen.getByText(/- A/)).toBeInTheDocument();
-    expect(screen.getByText(/- B/)).toBeInTheDocument();
-    expect(screen.getByText(/What changed\? — Everything/)).toBeInTheDocument();
+    expect(screen.getByText("editing")).toBeInTheDocument();
+    expect(screen.getByText("storytime")).toBeInTheDocument();
+    expect(screen.getByText(/#viral/)).toBeInTheDocument();
+    expect(screen.getByText(/#fyp/)).toBeInTheDocument();
+    expect(screen.getByText("Check out this twist!")).toBeInTheDocument();
 
     expect(screen.getByAltText("Thumbnail: Wait for it")).toHaveAttribute(
       "src",
@@ -177,9 +179,9 @@ describe("AdaptationStudio", () => {
 
     render(<AdaptationStudio clipId="clip-1" />);
 
-    await user.click(await screen.findByRole("button", { name: "Copy Chapters" }));
+    await user.click(await screen.findByRole("button", { name: "Copy Caption" }));
 
-    expect(writeText).toHaveBeenCalledWith("The hook — 0:02");
+    expect(writeText).toHaveBeenCalledWith("Check out this twist!");
   });
 
   it("renders tags as chips and copies them as a set", async () => {

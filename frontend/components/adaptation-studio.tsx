@@ -182,18 +182,10 @@ function CopyBlock({
 
 function manifestPanels(features: Record<string, unknown>) {
   const panels: { label: string; key: string }[] = [
-    { label: "Chapters", key: "chapters" },
     { label: "Tags", key: "tags" },
-    { label: "Poll", key: "poll" },
-    { label: "Quiz", key: "quiz" },
-    { label: "Stickers", key: "stickers" },
-    { label: "Pinned comment", key: "pinned_comment" },
-    { label: "Overlay styles", key: "overlay_spec" },
-    { label: "Caption style", key: "caption_style" },
-    { label: "Shorts link", key: "shorts_link" },
-    { label: "Caption", key: "caption" },
     { label: "Hashtags", key: "hashtags" },
-    { label: "Platform hooks", key: "platform_hooks" },
+    { label: "Caption", key: "caption" },
+    { label: "Shorts link", key: "shorts_link" },
   ];
   return panels
     .map((panel) => ({ ...panel, lines: featureLines(features, panel.key) }))
