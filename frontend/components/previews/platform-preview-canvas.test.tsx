@@ -139,4 +139,32 @@ describe("PlatformPreviewCanvas", () => {
 
     expect(screen.getByText("No Shorts preview available yet.")).toBeInTheDocument();
   });
+
+  it("renders TikTok overlays and pinned comment when adaptation exists", async () => {
+    const user = userEvent.setup();
+    const clip = makeClip({
+      latest_adaptations: [
+        {
+          platform: "tiktok",
+          surface: "POST",
+          status: "READY",
+          features: {
+            overlay_spec: [{ text: "POV: plot twist", placement: "top", style: "bold" }],
+            caption_style: "bold white",
+            stickers: [{ emoji: "🔥", placement: "top-right" }],
+            pinned_comment: "Part 2?",
+          },
+          assets: null,
+        },
+      ],
+    });
+
+    render(<PlatformPreviewCanvas clip={clip} />);
+
+    await user.click(screen.getByRole("tab", { name: "TikTok" }));
+
+    expect(screen.getByText("POV: plot twist")).toBeInTheDocument();
+    expect(screen.getByText("Part 2?")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Sticker: 🔥" })).toBeInTheDocument();
+  });
 });

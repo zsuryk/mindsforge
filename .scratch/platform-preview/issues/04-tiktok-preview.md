@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — Preview canvas scaffold + YouTube Shorts preview
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Create `TikTokPreview` component in `frontend/components/previews/`
 - [ ] Accept typed props: `overlay_spec: OverlaySpecItem[]`, `caption_style: string`, `stickers: StickerSuggestion[]`, `pinned_comment: string`

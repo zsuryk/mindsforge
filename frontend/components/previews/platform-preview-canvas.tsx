@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdaptationSummary, Clip } from "@/lib/api";
 import { ADAPTATION_TARGETS, AdaptationTarget } from "@/lib/platforms";
 
+import TikTokPreview from "./tiktok-preview";
 import YouTubeLongFormPreview from "./youtube-longform-preview";
 import YouTubeShortsPreview from "./youtube-shorts-preview";
 
@@ -43,37 +44,6 @@ function YouTubeVideoFallback() {
       <p className="text-center text-sm text-muted-foreground">
         Generate adaptation to preview
       </p>
-    </div>
-  );
-}
-
-function TikTokFallback({ hooks }: { hooks: string[] }) {
-  if (hooks.length === 0) {
-    return (
-      <div className="flex aspect-[9/16] items-center justify-center rounded-xl border-2 border-dashed border-tiktok/30 bg-tiktok/5">
-        <p className="text-center text-sm text-muted-foreground">
-          No TikTok preview available yet.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3 rounded-xl border-2 border-tiktok/40 bg-tiktok/5 p-4">
-      <div className="flex items-center gap-2 text-tiktok">
-        <span className="text-xs font-bold uppercase tracking-wider">TikTok</span>
-      </div>
-      <ol className="space-y-2">
-        {hooks.map((hook, index) => (
-          <li
-            key={hook}
-            className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-foreground"
-          >
-            <span className="shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
-            <span>{hook}</span>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }
@@ -160,7 +130,22 @@ function PreviewContent({
   }
 
   if (target.platform === "tiktok") {
-    return <TikTokFallback hooks={hooks} />;
+    const features = adaptation?.features as {
+      overlay_spec?: Array<{ text: string; placement: string; style: string }>;
+      caption_style?: string;
+      stickers?: Array<{ emoji: string; placement: string }>;
+      pinned_comment?: string;
+    } | null;
+
+    return (
+      <TikTokPreview
+        overlaySpec={features?.overlay_spec ?? null}
+        captionStyle={features?.caption_style ?? null}
+        stickers={features?.stickers ?? null}
+        pinnedComment={features?.pinned_comment ?? null}
+        platformHooks={hooks}
+      />
+    );
   }
 
   if (target.platform === "x") {
