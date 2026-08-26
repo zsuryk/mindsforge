@@ -73,6 +73,14 @@ export type ClipMetadata = {
   platform_hooks: PlatformHooks;
 };
 
+export type AdaptationSummary = {
+  platform: string;
+  surface: string;
+  status: string;
+  features: Record<string, unknown> | null;
+  assets: AdaptationAssets | null;
+};
+
 export type Clip = {
   id: string;
   job_id: string;
@@ -84,6 +92,7 @@ export type Clip = {
   thumbnail_url: string | null;
   virality_score: number | null;
   suggested_hooks: ClipMetadata | null;
+  latest_adaptations: AdaptationSummary[];
   created_at: string;
 };
 

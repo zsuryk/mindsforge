@@ -2,17 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, FlaskConical, Quote } from "lucide-react";
+import { ArrowLeft, FlaskConical } from "lucide-react";
 import Link from "next/link";
 
 import LaunchAbTestModal from "@/components/launch-ab-test-modal";
 import AdaptationStudio from "@/components/adaptation-studio";
-import ViralityGauge, { viralityColor, viralityLabel } from "@/components/virality-gauge";
+import PlatformPreviewCanvas from "@/components/previews/platform-preview-canvas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clip, fetchClip, mediaUrl } from "@/lib/api";
-import { PLATFORMS } from "@/lib/platforms";
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -52,9 +50,6 @@ export default function ClipStudioPage() {
   const { id } = useParams<{ id: string }>();
   const [clip, setClip] = useState<Clip | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<(typeof PLATFORMS)[number]["key"]>(
-    "youtube_shorts",
-  );
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
@@ -86,7 +81,6 @@ export default function ClipStudioPage() {
   }
 
   const metadata = clip.suggested_hooks;
-  const platformHooks = metadata?.platform_hooks ?? null;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -137,83 +131,7 @@ export default function ClipStudioPage() {
         </div>
 
         <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:row-span-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Virality score
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ViralityGauge score={clip.virality_score} />
-              {clip.virality_score !== null && (
-                <p
-                  className="mt-2 text-center text-xs"
-                  style={{ color: viralityColor(clip.virality_score) }}
-                >
-                  {viralityLabel(clip.virality_score)}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Platform hooks
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {platformHooks === null ? (
-                <p className="text-sm text-muted-foreground">No hooks yet — scoring pending.</p>
-              ) : (
-                <>
-                  <Tabs
-                    value={activeTab}
-                    onValueChange={(next) =>
-                      setActiveTab(next as (typeof PLATFORMS)[number]["key"])
-                    }
-                  >
-                    <TabsList className="grid w-full grid-cols-3">
-                      {PLATFORMS.map((tab) => (
-                        <TabsTrigger key={tab.key} value={tab.key} className="px-2 text-xs">
-                          {tab.label}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                    {PLATFORMS.map((tab) => {
-                      const tabHooks = platformHooks?.[tab.key] ?? [];
-                      return (
-                        <TabsContent key={tab.key} value={tab.key}>
-                          {tabHooks.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                              No hooks for this platform.
-                            </p>
-                          ) : (
-                            <ol className="space-y-2">
-                              {tabHooks.map((hook, index) => (
-                                <li
-                                  key={hook}
-                                  className="flex items-start gap-2 rounded-lg border border-border/40 bg-background/60 p-3 text-sm text-foreground"
-                                >
-                                  <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                  <span>
-                                    <span className="mr-1 text-xs text-muted-foreground">
-                                      {index + 1}.
-                                    </span>
-                                    {hook}
-                                  </span>
-                                </li>
-                              ))}
-                            </ol>
-                          )}
-                        </TabsContent>
-                      );
-                    })}
-                  </Tabs>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          <PlatformPreviewCanvas clip={clip} />
         </div>
 
         <div className="space-y-4 lg:col-span-2">

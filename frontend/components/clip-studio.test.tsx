@@ -49,6 +49,7 @@ function makeScoredClip(): Clip {
         x: ["Hot take:", "Unpopular opinion:"],
       },
     },
+    latest_adaptations: [],
     created_at: "2026-08-11T10:00:00Z",
   };
 }
@@ -80,17 +81,18 @@ describe("ClipStudioPage", () => {
 
     render(<ClipStudioPage />);
 
-    const hooksCard = await screen.findByRole("heading", { name: /platform hooks/i });
-    const card = hooksCard.closest(".rounded-xl") as HTMLElement;
+    await screen.findByText("The big reveal");
 
-    expect(within(card).getByText("Wait for the twist")).toBeInTheDocument();
+    const viralityCard = screen.getByText("Virality score").closest(".rounded-xl") as HTMLElement;
+    const previewTabs = viralityCard.querySelector('[role="tablist"]') as HTMLElement;
 
-    await user.click(within(card).getByRole("tab", { name: "TikTok" }));
-    expect(within(card).getByText("POV: you almost scrolled past")).toBeInTheDocument();
-    expect(within(card).queryByText("Wait for the twist")).not.toBeInTheDocument();
+    expect(screen.getByText("Wait for the twist")).toBeInTheDocument();
 
-    await user.click(within(card).getByRole("tab", { name: "X" }));
-    expect(within(card).getByText("Hot take:")).toBeInTheDocument();
+    await user.click(within(previewTabs).getByRole("tab", { name: "TikTok" }));
+    expect(screen.getByText("POV: you almost scrolled past")).toBeInTheDocument();
+
+    await user.click(within(previewTabs).getByRole("tab", { name: "X" }));
+    expect(screen.getByText("Hot take:")).toBeInTheDocument();
   });
 
   it("launches an A/B test from the modal and confirms", async () => {
@@ -193,7 +195,7 @@ describe("ClipStudioPage", () => {
 
     render(<ClipStudioPage />);
 
-    expect(await screen.findByText(/no hooks yet/i)).toBeInTheDocument();
+    await screen.findByText("The big reveal");
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
@@ -213,7 +215,7 @@ describe("ClipStudioPage", () => {
 
     render(<ClipStudioPage />);
 
-    const virality = await screen.findByRole("heading", { name: /virality score/i });
+    const virality = await screen.findByText("virality");
     const rail = virality.closest('[class*="lg:sticky"]') as HTMLElement;
     expect(rail).not.toBeNull();
     expect(rail.className).toContain("lg:top-4");

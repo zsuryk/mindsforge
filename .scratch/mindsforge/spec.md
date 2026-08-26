@@ -71,16 +71,16 @@ Service calls to `https://build.hellominds.ai/api/v1` with `MINDS_BUILDER_API_KE
 
 - `/` dashboard: header + URL input bar, four metric cards (Total Clips, Active A/B Tests, Avg Virality, Total Insights), "Mind at Work" activity panel (icon per event type, relative time, 5s polling, newest event highlighted), "What your Mind remembers" persistence card (brand voice excerpt, latest 3 brand rules, latest 3 learned insights, latest 2 trend queries, with ages; link to `/memory-inspector`), recent jobs table with status badges.
 - `/jobs`: job list + submission form.
-- `/clips/[id]`: studio — video player, virality gauge, platform hook tabs, platform-surface adaptation tabs (generate button + status, feature manifest with copy-paste blocks, asset downloads: thumbnail variant grid, SRT, chapter list; publish checklist; Test & Compare launches an experiment with `variant_kind=THUMBNAIL`), "Launch A/B Test" modal (title or thumbnail variants).
+- `/clips/[id]`: studio — video player, virality gauge, **platform preview canvas** (replaces platform hooks card: visual renders of each surface in platform-native frames — YouTube Shorts thumbnails with hook overlays, YouTube Long-form poll/quiz cards + chapters, TikTok vertical canvas with overlays/stickers/pinned comment, X tweet mockup with caption/hashtags; fixed sidebar width, scales to fit; copy icons on visual elements; fallback states for pre-adaptation data), platform-surface adaptation tabs (generate button + status, non-visual feature CopyBlocks only: tags, hashtags, captions, shorts_link; asset downloads: thumbnail variant grid, SRT, chapter list; publish checklist; Test & Compare launches an experiment with `variant_kind=THUMBNAIL`), "Launch A/B Test" modal (title or thumbnail variants).
 - `/ab-experiments`: variant cards with simulated/manual badge, Recharts CTR comparison, concluded insight banner, inline per-variant views/clicks editing for ACTIVE experiments (PATCH flips the card to manual).
 - `/chat`: full chat UI with the Mind — user bubbles / Mind replies / system chips (marker stripped), rule-saved chips, trend chips, "Research trends" input, "your Mind is thinking…" state, 5s history polling (catches background notifications), fail-closed 502 error banner, welcome empty state.
 - `/memory-inspector`: brain icon header, refresh button, insight cards grid, syntax-highlighted JSON tree viewer.
 
 ## Build phases (ticket graph)
 
-Ticket graph below in `issues/`. Slices: skeleton → ingestion → transcription → clip extraction → Minds scoring + clip studio → memory inspector → autonomous A/B testing → overview dashboard → Mind-decided A/B conclusion (09) + scoring hard gate (10) → adaptation domain & lazy generation (11) → adaptation assets & rendering (12) → adaptation studio UI (13).
+Ticket graph below in `issues/`. Slices: skeleton → ingestion → transcription → clip extraction → Minds scoring + clip studio → memory inspector → autonomous A/B testing → overview dashboard → Mind-decided A/B conclusion (09) + scoring hard gate (10) → adaptation domain & lazy generation (11) → adaptation assets & rendering (12) → adaptation studio UI (13) → platform preview canvas (23).
 
-Blocking: 09 and 10 are independent of each other (each modifies shipped behavior: ticket 07 conclusion, tickets 04/05 scoring). 10 → 11 → 12; 13 is blocked by 09, 11 and 12.
+Blocking: 09 and 10 are independent of each other (each modifies shipped behavior: ticket 07 conclusion, tickets 04/05 scoring). 10 → 11 → 12; 13 is blocked by 09, 11 and 12; 23 is blocked by 13.
 
 Post-review scope (chat, trends, autonomy — tickets 15–22) in the section below; its behaviour is folded into the sections above.
 

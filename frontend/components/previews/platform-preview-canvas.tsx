@@ -1,0 +1,207 @@
+"use client";
+
+import { useState } from "react";
+
+import ViralityGauge, { viralityColor, viralityLabel } from "@/components/virality-gauge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AdaptationSummary, Clip } from "@/lib/api";
+import { ADAPTATION_TARGETS, AdaptationTarget } from "@/lib/platforms";
+
+import YouTubeShortsPreview from "./youtube-shorts-preview";
+
+type PlatformPreviewCanvasProps = {
+  clip: Clip;
+};
+
+function targetKey(target: AdaptationTarget): string {
+  return `${target.platform}/${target.surface}`;
+}
+
+function platformHooksKey(target: AdaptationTarget): string {
+  if (target.platform === "youtube" && target.surface === "SHORTS") {
+    return "youtube_shorts";
+  }
+  return target.platform;
+}
+
+function findAdaptation(
+  adaptations: AdaptationSummary[],
+  target: AdaptationTarget,
+): AdaptationSummary | null {
+  return (
+    adaptations.find(
+      (a) => a.platform === target.platform && a.surface === target.surface,
+    ) ?? null
+  );
+}
+
+function YouTubeVideoFallback() {
+  return (
+    <div className="flex aspect-video items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/20 bg-muted/20">
+      <p className="text-center text-sm text-muted-foreground">
+        Generate adaptation to preview
+      </p>
+    </div>
+  );
+}
+
+function TikTokFallback({ hooks }: { hooks: string[] }) {
+  if (hooks.length === 0) {
+    return (
+      <div className="flex aspect-[9/16] items-center justify-center rounded-xl border-2 border-dashed border-tiktok/30 bg-tiktok/5">
+        <p className="text-center text-sm text-muted-foreground">
+          No TikTok preview available yet.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border-2 border-tiktok/40 bg-tiktok/5 p-4">
+      <div className="flex items-center gap-2 text-tiktok">
+        <span className="text-xs font-bold uppercase tracking-wider">TikTok</span>
+      </div>
+      <ol className="space-y-2">
+        {hooks.map((hook, index) => (
+          <li
+            key={hook}
+            className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-foreground"
+          >
+            <span className="shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
+            <span>{hook}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function XPreviewFallback({ hooks }: { hooks: string[] }) {
+  if (hooks.length === 0) {
+    return (
+      <div className="flex aspect-video items-center justify-center rounded-xl border-2 border-dashed border-x/30 bg-x/5">
+        <p className="text-center text-sm text-muted-foreground">
+          Generate adaptation to preview
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border-2 border-x/40 bg-x/5 p-4">
+      <div className="flex items-center gap-2 text-x">
+        <span className="text-xs font-bold uppercase tracking-wider">X</span>
+      </div>
+      <ol className="space-y-2">
+        {hooks.map((hook, index) => (
+          <li
+            key={hook}
+            className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-foreground"
+          >
+            <span className="shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
+            <span>{hook}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function PreviewContent({
+  target,
+  adaptation,
+  platformHooks,
+}: {
+  target: AdaptationTarget;
+  adaptation: AdaptationSummary | null;
+  platformHooks: Record<string, string[]> | null;
+}) {
+  const hooks = platformHooks?.[platformHooksKey(target)] ?? [];
+
+  if (target.surface === "SHORTS") {
+    return (
+      <YouTubeShortsPreview
+        thumbnailBriefs={
+          adaptation?.features?.thumbnail_briefs as Array<{
+            frame_timestamp: number;
+            overlay_text: string;
+          }> | null
+        }
+        platformHooks={hooks}
+        assets={adaptation?.assets ?? null}
+      />
+    );
+  }
+
+  if (target.surface === "LONG_FORM") {
+    return <YouTubeVideoFallback />;
+  }
+
+  if (target.platform === "tiktok") {
+    return <TikTokFallback hooks={hooks} />;
+  }
+
+  if (target.platform === "x") {
+    return <XPreviewFallback hooks={hooks} />;
+  }
+
+  return null;
+}
+
+export default function PlatformPreviewCanvas({ clip }: PlatformPreviewCanvasProps) {
+  const [activeTarget, setActiveTarget] = useState<AdaptationTarget>(ADAPTATION_TARGETS[0]);
+  const adaptations = clip.latest_adaptations ?? [];
+  const adaptation = findAdaptation(adaptations, activeTarget);
+  const platformHooks = clip.suggested_hooks?.platform_hooks ?? null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Virality score
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <ViralityGauge score={clip.virality_score} />
+        {clip.virality_score !== null && (
+          <p
+            className="text-center text-xs"
+            style={{ color: viralityColor(clip.virality_score) }}
+          >
+            {viralityLabel(clip.virality_score)}
+          </p>
+        )}
+
+        <Tabs
+          value={targetKey(activeTarget)}
+          onValueChange={(next) => {
+            const target = ADAPTATION_TARGETS.find((t) => targetKey(t) === next);
+            if (target) setActiveTarget(target);
+          }}
+        >
+          <TabsList className="grid w-full grid-cols-4">
+            {ADAPTATION_TARGETS.map((target) => (
+              <TabsTrigger
+                key={targetKey(target)}
+                value={targetKey(target)}
+                className="px-2 text-xs"
+              >
+                {target.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {ADAPTATION_TARGETS.map((target) => (
+            <TabsContent key={targetKey(target)} value={targetKey(target)}>
+              <PreviewContent
+                target={target}
+                adaptation={findAdaptation(adaptations, target)}
+                platformHooks={platformHooks}
+              />
+            </TabsContent>
+          ))}
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}

@@ -53,8 +53,12 @@ The natural-language conclusion of an experiment, authored by the Mind and persi
 _Avoid_: lesson, takeaway
 
 **Clip studio**:
-The page where a creator reviews a scored clip: plays the video, reads the transcript, checks platform hooks, and drives the adaptation studio.
+The page where a creator reviews a scored clip: plays the video, reads the transcript, checks the platform preview canvas, and drives the adaptation studio.
 _Avoid_: clip page, clip detail view
+
+**Platform preview canvas**:
+The sidebar panel in the clip studio that renders platform-native visual previews of each surface's features — YouTube Shorts thumbnails with hook overlays, YouTube Long-form poll/quiz cards, TikTok vertical canvas with overlays and stickers, X tweet mockup. It replaces the text-only "Platform hooks" card and enriches automatically as adaptations are generated.
+_Avoid_: hook pane, hooks card, preview panel
 
 **Adaptation studio**:
 The section of the clip studio where adaptations are generated, their assets downloaded, and the publish checklist followed.
