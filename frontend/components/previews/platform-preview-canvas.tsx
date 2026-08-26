@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdaptationSummary, Clip } from "@/lib/api";
 import { ADAPTATION_TARGETS, AdaptationTarget } from "@/lib/platforms";
 
+import YouTubeLongFormPreview from "./youtube-longform-preview";
 import YouTubeShortsPreview from "./youtube-shorts-preview";
 
 type PlatformPreviewCanvasProps = {
@@ -135,7 +136,27 @@ function PreviewContent({
   }
 
   if (target.surface === "LONG_FORM") {
-    return <YouTubeVideoFallback />;
+    if (!adaptation?.features) {
+      return <YouTubeVideoFallback />;
+    }
+
+    const features = adaptation.features as {
+      chapters?: Array<{ title: string; timestamp: number }>;
+      poll?: { question: string; options: string[] };
+      quiz?: Array<{ question: string; answer: string }>;
+      thumbnail_briefs?: Array<{ frame_timestamp: number; overlay_text: string }>;
+      shorts_link?: string;
+    };
+
+    return (
+      <YouTubeLongFormPreview
+        chapters={features.chapters ?? null}
+        poll={features.poll ?? null}
+        quiz={features.quiz ?? null}
+        thumbnailBriefs={features.thumbnail_briefs ?? null}
+        shortsLink={features.shorts_link ?? null}
+      />
+    );
   }
 
   if (target.platform === "tiktok") {
