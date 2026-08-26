@@ -435,3 +435,145 @@ def test_rerunning_pipeline_clears_stale_error_message(
     assert job["status"] == "COMPLETED"
     assert job["error_message"] is None
     assert len(test_client.get(f"/api/v1/jobs/{job_id}/clips").json()) == 1
+
+
+def test_clip_returns_empty_latest_adaptations_when_none_exist(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    from app.services import media, minds, transcription
+    from app.services.transcription import Transcription, TranscriptSegment
+
+    raw = tmp_path / "raw" / "video.mp4"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(b"fake media bytes")
+    monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
+    monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
+    monkeypatch.setattr(media, "cut_clip", lambda source, dest, start, end: dest.write_bytes(b"clip") or dest)
+    monkeypatch.setattr(
+        media,
+        "extract_frame_at_timestamp",
+        lambda source, dest, timestamp: dest.write_bytes(b"thumb") or dest,
+    )
+    monkeypatch.setattr(
+        transcription,
+        "transcribe",
+        lambda audio_path: Transcription(
+            segments=[TranscriptSegment(text="hello.", start=0.0, end=2.0)],
+            duration_seconds=2.0,
+        ),
+    )
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(
+        minds,
+        "generate_clip_metadata",
+        lambda *args, **kwargs: minds.ClipMetadata(
+            virality_score=50,
+            suggested_titles=["T"],
+            platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},
+        ),
+    )
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/noadapt.mp4"},
+    )
+    job_id = res.json()["job_id"]
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "COMPLETED"
+    clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
+    assert len(clips) == 1
+
+    clip_id = clips[0]["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip_id}").json()
+    assert detail["latest_adaptations"] == []
+
+
+def test_clip_returns_latest_adaptations_when_exist(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_client, tmp_path = client
+    monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
+    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
+    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    from app.services import media, minds, transcription
+    from app.services.transcription import Transcription, TranscriptSegment
+
+    raw = tmp_path / "raw" / "video.mp4"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(b"fake media bytes")
+    monkeypatch.setattr(media, "download_video", lambda url, target_dir: raw)
+    monkeypatch.setattr(media, "extract_audio", lambda source, dest: dest)
+    monkeypatch.setattr(media, "cut_clip", lambda source, dest, start, end: dest.write_bytes(b"clip") or dest)
+    monkeypatch.setattr(
+        media,
+        "extract_frame_at_timestamp",
+        lambda source, dest, timestamp: dest.write_bytes(b"thumb") or dest,
+    )
+    monkeypatch.setattr(
+        transcription,
+        "transcribe",
+        lambda audio_path: Transcription(
+            segments=[TranscriptSegment(text="hello.", start=0.0, end=2.0)],
+            duration_seconds=2.0,
+        ),
+    )
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(
+        minds,
+        "generate_clip_metadata",
+        lambda *args, **kwargs: minds.ClipMetadata(
+            virality_score=50,
+            suggested_titles=["T"],
+            platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},
+        ),
+    )
+
+    res = test_client.post(
+        "/api/v1/jobs/process",
+        data={"source_url": "https://example.com/withadapt.mp4"},
+    )
+    job_id = res.json()["job_id"]
+    job = test_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "COMPLETED"
+    clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
+    assert len(clips) == 1
+    clip_id = clips[0]["id"]
+
+    from app.db.base import get_session_factory
+    from app.models.adaptation import ClipAdaptation, AdaptationSurface, AdaptationStatus
+
+    with get_session_factory()() as db:
+        adaptation = ClipAdaptation(
+            clip_id=clip_id,
+            platform="youtube",
+            surface=AdaptationSurface.SHORTS,
+            status=AdaptationStatus.READY,
+            features={"hooks": ["Hook one", "Hook two"]},
+            assets={"thumbnail_variants": []},
+        )
+        db.add(adaptation)
+        db.commit()
+
+    detail = test_client.get(f"/api/v1/clips/{clip_id}").json()
+    assert len(detail["latest_adaptations"]) == 1
+    a = detail["latest_adaptations"][0]
+    assert a["platform"] == "youtube"
+    assert a["surface"] == "SHORTS"
+    assert a["status"] == "READY"
+    assert a["features"] == {"hooks": ["Hook one", "Hook two"]}
+    assert a["assets"] == {"thumbnail_variants": []}
+
+    list_res = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
+    assert len(list_res[0]["latest_adaptations"]) == 1

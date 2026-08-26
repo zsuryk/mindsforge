@@ -1,8 +1,17 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
 from app.services.minds import ClipMetadata
+
+
+class AdaptationSummary(BaseModel):
+    platform: str
+    surface: str
+    status: str
+    features: dict[str, Any] | None = None
+    assets: dict[str, Any] | None = None
 
 
 class ClipOut(BaseModel):
@@ -16,4 +25,5 @@ class ClipOut(BaseModel):
     thumbnail_url: str | None = None
     virality_score: int | None = None
     suggested_hooks: ClipMetadata | None = None
+    latest_adaptations: list[AdaptationSummary] = []
     created_at: datetime
