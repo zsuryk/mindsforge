@@ -9,6 +9,7 @@ import { AdaptationSummary, Clip } from "@/lib/api";
 import { ADAPTATION_TARGETS, AdaptationTarget } from "@/lib/platforms";
 
 import TikTokPreview from "./tiktok-preview";
+import XPreview from "./x-preview";
 import YouTubeLongFormPreview from "./youtube-longform-preview";
 import YouTubeShortsPreview from "./youtube-shorts-preview";
 
@@ -44,37 +45,6 @@ function YouTubeVideoFallback() {
       <p className="text-center text-sm text-muted-foreground">
         Generate adaptation to preview
       </p>
-    </div>
-  );
-}
-
-function XPreviewFallback({ hooks }: { hooks: string[] }) {
-  if (hooks.length === 0) {
-    return (
-      <div className="flex aspect-video items-center justify-center rounded-xl border-2 border-dashed border-x/30 bg-x/5">
-        <p className="text-center text-sm text-muted-foreground">
-          Generate adaptation to preview
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3 rounded-xl border-2 border-x/40 bg-x/5 p-4">
-      <div className="flex items-center gap-2 text-x">
-        <span className="text-xs font-bold uppercase tracking-wider">X</span>
-      </div>
-      <ol className="space-y-2">
-        {hooks.map((hook, index) => (
-          <li
-            key={hook}
-            className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-foreground"
-          >
-            <span className="shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
-            <span>{hook}</span>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }
@@ -149,7 +119,18 @@ function PreviewContent({
   }
 
   if (target.platform === "x") {
-    return <XPreviewFallback hooks={hooks} />;
+    const features = adaptation?.features as {
+      caption?: string;
+      hashtags?: string[];
+    } | null;
+
+    return (
+      <XPreview
+        caption={features?.caption ?? null}
+        hashtags={features?.hashtags ?? null}
+        platformHooks={hooks}
+      />
+    );
   }
 
   return null;
