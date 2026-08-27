@@ -5,7 +5,8 @@ from uuid import uuid4
 from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import AdaptationStatus, ClipAdaptation
-from app.services import activity, minds
+from app.models.todo import TodoItemType
+from app.services import activity, minds, todo as todo_module
 from app.services.adaptation_assets import render_adaptation_assets
 from app.services.transcription import TranscriptSegment
 
@@ -147,6 +148,13 @@ def generate_adaptation(adaptation_id: str) -> None:
             minds.notify_mind(
                 f"Adaptation ready: '{clip.title}' for {adaptation.platform}/"
                 f"{adaptation.surface.value} — {_feature_summary(adaptation.features)}."
+            )
+            todo_module.create_todo(
+                type=TodoItemType.EXPERIMENT_RESULT,
+                title=f"Adaptation ready: '{clip.title}' for {adaptation.platform}/{adaptation.surface.value}",
+                body=_feature_summary(adaptation.features),
+                action_url=f"/clips/{clip.id}/adaptations/{adaptation.id}",
+                action_label="View adaptation",
             )
             logger.info(
                 "Adaptation %s ready: %s/%s",

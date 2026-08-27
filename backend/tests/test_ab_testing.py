@@ -16,7 +16,8 @@ from app.models.experiment import (
     AbExperimentStatus,
 )
 from app.models.job import Job
-from app.services import ab_testing, minds
+from app.models.todo import TodoItemType
+from app.services import ab_testing, minds, todo as todo_module
 
 
 def make_clip(db, tmp_path: Path, title: str = "My clip") -> Clip:
@@ -1188,3 +1189,89 @@ def test_failed_experiment_logs_activity_row(
     assert len(failed) == 1
     assert failed[0].ref_id == experiment.id
     assert failed[0].label == f"Experiment {experiment.id} failed: builder api down"
+
+
+def test_concluded_experiment_creates_todo_item(
+    client: tuple[TestClient, Path],
+    _minds_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
+    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
+
+    created: list[dict] = []
+
+    def fake_create_todo(type, title, body, action_url=None, action_label=None):
+        created.append(
+            {"type": type, "title": title, "body": body, "action_url": action_url}
+        )
+
+    monkeypatch.setattr(todo_module, "create_todo", fake_create_todo)
+
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    assert len(created) == 1
+    assert created[0]["type"] == TodoItemType.EXPERIMENT_RESULT
+    assert "My clip" in created[0]["title"]
+    assert "v1" in created[0]["title"]
+    assert created[0]["body"] == "A won; reuse its hook style."
+    assert created[0]["action_url"] is not None
+
+
+def test_failed_experiment_creates_todo_item(
+    client: tuple[TestClient, Path],
+    _minds_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, tmp_path = client
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+        experiment = add_experiment(
+            db,
+            clip_id=clip.id,
+            variants=[
+                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
+                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
+            ],
+        )
+
+    monkeypatch.setattr(
+        minds,
+        "decide_experiment_winner",
+        lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
+            _ for _ in ()
+        ).throw(minds.MindsError("builder api down")),
+    )
+    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
+
+    created: list[dict] = []
+
+    def fake_create_todo(type, title, body, action_url=None, action_label=None):
+        created.append(
+            {"type": type, "title": title, "body": body, "action_url": action_url}
+        )
+
+    monkeypatch.setattr(todo_module, "create_todo", fake_create_todo)
+
+    ab_testing.refresh_active_experiments(view_threshold=1000)
+
+    assert len(created) == 1
+    assert created[0]["type"] == TodoItemType.EXPERIMENT_RESULT
+    assert experiment.id in created[0]["title"]
+    assert "failed" in created[0]["title"]
+    assert "builder api down" in created[0]["body"]
+    assert created[0]["action_url"] is not None

@@ -9,7 +9,8 @@ from app.db.base import get_session_factory
 from app.models.adaptation import ClipAdaptation
 from app.models.clip import Clip
 from app.models.job import Job
-from app.services import adaptations, minds
+from app.models.todo import TodoItemType
+from app.services import adaptations, minds, todo as todo_module
 
 YOUTUBE_LONG_FORM_FEATURES = {
     "chapters": [{"title": "The hook", "timestamp": 2.0}],
@@ -743,3 +744,44 @@ def test_notification_failure_leaves_adaptation_ready(
 
     assert detail["status"] == "READY"
     assert detail["error_message"] is None
+
+
+def test_ready_adaptation_creates_todo_item(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    _minds_env: None,
+) -> None:
+    test_client, tmp_path = client
+    stub_rendering(monkeypatch)
+    stub_features(
+        monkeypatch,
+        features={
+            "overlay_spec": [{"text": "boom", "placement": "center", "style": "bold"}],
+            "caption_style": "bold white",
+            "stickers": [{"emoji": "🔥", "placement": "top-right"}],
+            "pinned_comment": "First!",
+        },
+    )
+    with get_session_factory()() as db:
+        clip = make_clip(db, tmp_path)
+    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
+
+    created: list[dict] = []
+
+    def fake_create_todo(type, title, body, action_url=None, action_label=None):
+        created.append(
+            {"type": type, "title": title, "body": body, "action_url": action_url}
+        )
+
+    monkeypatch.setattr(todo_module, "create_todo", fake_create_todo)
+
+    res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
+    adaptation_id = res.json()["id"]
+    detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
+    assert detail["status"] == "READY"
+
+    assert len(created) == 1
+    assert created[0]["type"] == TodoItemType.EXPERIMENT_RESULT
+    assert "Adaptation clip" in created[0]["title"]
+    assert "tiktok/POST" in created[0]["title"]
+    assert created[0]["action_url"] is not None

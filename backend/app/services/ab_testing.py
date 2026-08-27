@@ -13,7 +13,8 @@ from app.models.experiment import (
     AbExperimentDataSource,
     AbExperimentStatus,
 )
-from app.services import activity, minds
+from app.models.todo import TodoItemType
+from app.services import activity, minds, todo as todo_module
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,13 @@ def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> Non
     minds.notify_mind(
         f"Experiment {experiment.id} failed: {experiment.error_message}."
     )
+    todo_module.create_todo(
+        type=TodoItemType.EXPERIMENT_RESULT,
+        title=f"Experiment {experiment.id} failed",
+        body=f"Experiment {experiment.id} failed: {experiment.error_message}.",
+        action_url=f"/experiments/{experiment.id}",
+        action_label="View experiment",
+    )
 
 
 def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
@@ -114,6 +122,13 @@ def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
         f"Experiment concluded on clip '{clip.title}' ({experiment.platform}). "
         f"Winner: {verdict.winning_variant_id}. Learned insight: "
         f"'{verdict.reasoning}'."
+    )
+    todo_module.create_todo(
+        type=TodoItemType.EXPERIMENT_RESULT,
+        title=f"Experiment on '{clip.title}' won by {verdict.winning_variant_id}",
+        body=verdict.reasoning,
+        action_url=f"/experiments/{experiment.id}",
+        action_label="View experiment",
     )
 
 
