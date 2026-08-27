@@ -12,8 +12,8 @@ from app.services.transcription import TranscriptSegment
 
 logger = logging.getLogger(__name__)
 
-# Feature-manifest keys in a fixed order, labelled for the chat notification's
-# brief summary so the Mind sees at a glance what a READY adaptation contains.
+# Feature-manifest keys in a fixed order, labelled for the todo item's
+# brief summary so the user sees at a glance what a READY adaptation contains.
 _FEATURE_SUMMARY_LABELS: tuple[tuple[str, str], ...] = (
     ("chapters", "chapters"),
     ("tags", "tags"),
@@ -145,10 +145,6 @@ def generate_adaptation(adaptation_id: str) -> None:
             # Memory history is appended only after the row is committed READY,
             # so the record never claims success for a still-GENERATING row.
             _persist_adaptation_history(adaptation)
-            minds.notify_mind(
-                f"Adaptation ready: '{clip.title}' for {adaptation.platform}/"
-                f"{adaptation.surface.value} — {_feature_summary(adaptation.features)}."
-            )
             todo_module.create_todo(
                 type=TodoItemType.EXPERIMENT_RESULT,
                 title=f"Adaptation ready: '{clip.title}' for {adaptation.platform}/{adaptation.surface.value}",

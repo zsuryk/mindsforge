@@ -69,9 +69,6 @@ def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> Non
         f"Experiment {experiment.id} failed: {experiment.error_message}",
         ref_id=experiment.id,
     )
-    minds.notify_mind(
-        f"Experiment {experiment.id} failed: {experiment.error_message}."
-    )
     todo_module.create_todo(
         type=TodoItemType.EXPERIMENT_RESULT,
         title=f"Experiment {experiment.id} failed",
@@ -117,11 +114,6 @@ def _conclude_experiment(db: Session, experiment: AbExperiment) -> None:
         f"Experiment concluded on '{clip.title}' — winner {verdict.winning_variant_id}",
         detail={"insight": verdict.reasoning},
         ref_id=experiment.id,
-    )
-    minds.notify_mind(
-        f"Experiment concluded on clip '{clip.title}' ({experiment.platform}). "
-        f"Winner: {verdict.winning_variant_id}. Learned insight: "
-        f"'{verdict.reasoning}'."
     )
     todo_module.create_todo(
         type=TodoItemType.EXPERIMENT_RESULT,

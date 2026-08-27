@@ -769,7 +769,6 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
 
     monkeypatch.setattr(minds, "_message_mind", fake_message_mind)
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -813,7 +812,6 @@ def test_conclusion_writes_insight_to_minds_memory(
         lambda agent_id, key, value: captured.update(agent_id=agent_id, key=key, value=value)
         or True,
     )
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -854,7 +852,6 @@ def test_memory_write_failure_still_concludes_experiment(
         "fetch_memory",
         lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
     )
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -915,7 +912,6 @@ def test_launched_experiment_runs_to_conclusion_via_sweeps(
         "update_memory",
         lambda agent_id, key, value: captured.update(value=value) or True,
     )
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     rng = random.Random(7)
     sweeps = 0
@@ -942,7 +938,7 @@ def test_launched_experiment_runs_to_conclusion_via_sweeps(
     assert history[0]["learned_insight"] == body["learned_insight"]
 
 
-def test_concluded_experiment_posts_notification_with_winner_and_insight(
+def test_concluded_experiment_does_not_post_chat_notification(
     client: tuple[TestClient, Path],
     _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
@@ -967,14 +963,10 @@ def test_concluded_experiment_posts_notification_with_winner_and_insight(
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
-    assert len(notifications) == 1
-    text = notifications[0]
-    assert text.startswith("Experiment concluded on clip 'My clip' (youtube_shorts).")
-    assert "Winner: v1" in text
-    assert "Learned insight: 'A won; reuse its hook style.'" in text
+    assert len(notifications) == 0
 
 
-def test_failed_experiment_posts_notification_with_error(
+def test_failed_experiment_does_not_post_chat_notification(
     client: tuple[TestClient, Path],
     _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
@@ -982,7 +974,7 @@ def test_failed_experiment_posts_notification_with_error(
     _, tmp_path = client
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
-        experiment = add_experiment(
+        add_experiment(
             db,
             clip_id=clip.id,
             variants=[
@@ -1003,79 +995,7 @@ def test_failed_experiment_posts_notification_with_error(
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
-    assert len(notifications) == 1
-    assert notifications[0] == f"Experiment {experiment.id} failed: builder api down."
-
-
-def test_notification_failure_does_not_change_concluded_experiment(
-    client: tuple[TestClient, Path],
-    _minds_env: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, tmp_path = client
-    with get_session_factory()() as db:
-        clip = make_clip(db, tmp_path)
-        experiment = add_experiment(
-            db,
-            clip_id=clip.id,
-            variants=[
-                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
-                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
-            ],
-        )
-
-    stub_winner(monkeypatch, variant_id="v1", reasoning="A won.")
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(
-        minds,
-        "post_chat_notification",
-        lambda text: (_ for _ in ()).throw(minds.MindsError("builder api down")),
-    )
-
-    ab_testing.refresh_active_experiments(view_threshold=1000)
-
-    with get_session_factory()() as db:
-        stored = db.get(AbExperiment, experiment.id)
-        assert stored.status == AbExperimentStatus.CONCLUDED
-        assert stored.winning_variant_id == "v1"
-
-
-def test_notification_failure_does_not_change_failed_experiment(
-    client: tuple[TestClient, Path],
-    _minds_env: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, tmp_path = client
-    with get_session_factory()() as db:
-        clip = make_clip(db, tmp_path)
-        experiment = add_experiment(
-            db,
-            clip_id=clip.id,
-            variants=[
-                {"variant_id": "v1", "title": "A", "ctr": 5.0, "views": 600, "clicks": 30},
-                {"variant_id": "v2", "title": "B", "ctr": 2.0, "views": 400, "clicks": 8},
-            ],
-        )
-
-    monkeypatch.setattr(
-        minds,
-        "decide_experiment_winner",
-        lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
-            _ for _ in ()
-        ).throw(minds.MindsError("builder api down")),
-    )
-    monkeypatch.setattr(
-        minds,
-        "post_chat_notification",
-        lambda text: (_ for _ in ()).throw(minds.MindsError("builder api down")),
-    )
-
-    ab_testing.refresh_active_experiments(view_threshold=1000)
-
-    with get_session_factory()() as db:
-        stored = db.get(AbExperiment, experiment.id)
-        assert stored.status == AbExperimentStatus.FAILED
-        assert "builder api down" in stored.error_message
+    assert len(notifications) == 0
 
 
 def _activity_rows() -> list[MindActivity]:
@@ -1140,7 +1060,6 @@ def test_conclusion_logs_activity_row_with_winner(
     stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
     monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -1181,7 +1100,6 @@ def test_failed_experiment_logs_activity_row(
             _ for _ in ()
         ).throw(minds.MindsError("builder api down")),
     )
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -1211,7 +1129,6 @@ def test_concluded_experiment_creates_todo_item(
     stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
     monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     created: list[dict] = []
 
@@ -1256,7 +1173,6 @@ def test_failed_experiment_creates_todo_item(
             _ for _ in ()
         ).throw(minds.MindsError("builder api down")),
     )
-    monkeypatch.setattr(minds, "notify_mind", lambda text: None)
 
     created: list[dict] = []
 
@@ -1271,7 +1187,5 @@ def test_failed_experiment_creates_todo_item(
 
     assert len(created) == 1
     assert created[0]["type"] == TodoItemType.EXPERIMENT_RESULT
-    assert experiment.id in created[0]["title"]
-    assert "failed" in created[0]["title"]
     assert "builder api down" in created[0]["body"]
     assert created[0]["action_url"] is not None
