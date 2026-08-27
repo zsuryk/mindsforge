@@ -1,7 +1,9 @@
 import httpx
 import pytest
 
+from app.models.todo import TodoItemType
 from app.services import minds, trends
+from app.services import todo as todo_module
 
 TAVILY_BODY = {
     "query": "fitness shorts",
@@ -28,6 +30,8 @@ TAVILY_BODY = {
         },
     ],
 }
+
+TAVILY_BODY_RESULTS = TAVILY_BODY["results"]
 
 
 class FakeResponse:
@@ -403,3 +407,260 @@ def test_build_trend_block_keeps_latest_five_entries() -> None:
     assert "query 0" not in block
     for i in range(1, 6):
         assert f"query {i}" in block
+
+
+# --- weekly_trend_research — digest TodoItem ---
+
+
+def test_weekly_trend_research_creates_digest_todo_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_env(monkeypatch)
+    _stub_tavily(monkeypatch, body=TAVILY_BODY)
+    _stub_chat(monkeypatch)
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        trends,
+        "_build_weekly_digest_body",
+        lambda all_results, db=None: ("digest body", "/clips/top", "View top clip"),
+    )
+
+    created: list[dict] = []
+
+    def fake_create_todo(type, title, body, action_url=None, action_label=None):
+        item = type  # just capture the args
+        created.append({"type": type, "title": title, "body": body})
+        return item
+
+    monkeypatch.setattr(todo_module, "create_todo", fake_create_todo)
+
+    result = trends.weekly_trend_research()
+
+    assert len(result) == 3
+    assert len(created) == 1
+    assert created[0]["type"] == TodoItemType.WEEKLY_DIGEST
+    assert "Weekly Trend Digest" in created[0]["title"]
+
+
+def test_weekly_trend_research_no_chat_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify that weekly_trend_research does NOT post to chat."""
+    _configure_env(monkeypatch)
+    _stub_tavily(monkeypatch, body=TAVILY_BODY)
+    posts = _stub_chat(monkeypatch)
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        trends,
+        "_build_weekly_digest_body",
+        lambda all_results, db=None: ("digest body", None, None),
+    )
+
+    def noop_create_todo(*a, **kw):
+        return None
+
+    monkeypatch.setattr(todo_module, "create_todo", noop_create_todo)
+
+    trends.weekly_trend_research()
+
+    message_posts = [p for path, p in posts if path == "/v1/messaging/message"]
+    # No chat notification should be posted for weekly digests
+    assert len(message_posts) == 0
+
+
+def test_weekly_trend_research_no_digest_when_paused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_env(monkeypatch)
+    _stub_tavily(monkeypatch, body=TAVILY_BODY)
+    _stub_chat(monkeypatch)
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"weekly_trends_paused": True})
+    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+
+    created: list = []
+
+    def fake_create_todo(*args, **kwargs):
+        created.append(True)
+        return None
+
+    monkeypatch.setattr(todo_module, "create_todo", fake_create_todo)
+
+    result = trends.weekly_trend_research()
+
+    assert result == {}
+    assert len(created) == 0
+
+
+def test_weekly_trend_research_no_digest_when_no_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_env(monkeypatch)
+    # Stub Tavily to return empty results for all platforms
+    empty_body = {"query": "test", "results": []}
+    _stub_tavily(monkeypatch, body=empty_body)
+    _stub_chat(monkeypatch)
+    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+
+    created: list = []
+
+    def fake_create_todo(*args, **kwargs):
+        created.append(True)
+        return None
+
+    monkeypatch.setattr(todo_module, "create_todo", fake_create_todo)
+
+    trends.weekly_trend_research()
+
+    assert len(created) == 0
+
+
+# --- _build_weekly_digest_body — full integration ---
+
+
+def test_build_weekly_digest_body_contains_trends_section(
+    monkeypatch: pytest.MonkeyPatch, client
+) -> None:
+    _configure_env(monkeypatch)
+    all_results = {
+        "youtube": [
+            trends.TrendResult(title="YT Trend 1", url="https://yt1.com", content=""),
+            trends.TrendResult(title="YT Trend 2", url="https://yt2.com", content=""),
+        ],
+        "tiktok": [
+            trends.TrendResult(title="TT Trend 1", url="https://tt1.com", content=""),
+        ],
+    }
+
+    body, action_url, action_label = trends._build_weekly_digest_body(all_results)
+
+    assert "## Top Trending Topics" in body
+    assert "YT Trend 1" in body
+    assert "YT Trend 2" in body
+    assert "TT Trend 1" in body
+    assert action_url is None
+    assert action_label is None
+
+
+def test_build_weekly_digest_body_clip_performance(
+    monkeypatch: pytest.MonkeyPatch, client
+) -> None:
+    test_client, _ = client
+    _configure_env(monkeypatch)
+
+    # Create a clip directly via the DB
+    from app.db.base import get_session_factory
+    from app.models.clip import Clip
+    from app.models.job import Job
+
+    with get_session_factory()() as db:
+        job = Job(source_url="https://example.com/video.mp4", title="Test Job")
+        db.add(job)
+        db.flush()
+        clip = Clip(
+            job_id=job.id,
+            title="Test Clip",
+            start_time=0.0,
+            end_time=10.0,
+            transcript_text="test transcript",
+            file_path="/tmp/test.mp4",
+            virality_score=85,
+        )
+        db.add(clip)
+        db.commit()
+        clip_id = clip.id
+
+    all_results = {"youtube": [trends.TrendResult(**TAVILY_BODY_RESULTS[0])]}
+    body, action_url, action_label = trends._build_weekly_digest_body(all_results)
+
+    assert "## Clip Performance" in body
+    assert "Total clips: 1" in body
+    assert "Average virality: 85.0" in body
+    assert "Top performer: \"Test Clip\"" in body
+    assert "virality 85" in body
+    assert action_url == f"/clips/{clip_id}"
+    assert action_label == "View top clip"
+
+
+def test_build_weekly_digest_body_suggestions_high_virality(
+    monkeypatch: pytest.MonkeyPatch, client
+) -> None:
+    test_client, _ = client
+    _configure_env(monkeypatch)
+
+    from app.db.base import get_session_factory
+    from app.models.clip import Clip
+    from app.models.job import Job
+
+    with get_session_factory()() as db:
+        job = Job(source_url="https://example.com/video2.mp4", title="Hot Job")
+        db.add(job)
+        db.flush()
+        clip = Clip(
+            job_id=job.id,
+            title="Hot Clip",
+            start_time=0.0,
+            end_time=10.0,
+            transcript_text="test transcript",
+            file_path="/tmp/test2.mp4",
+            virality_score=92,
+        )
+        db.add(clip)
+        db.commit()
+
+    all_results = {"youtube": [trends.TrendResult(**TAVILY_BODY_RESULTS[0])]}
+    body, _, _ = trends._build_weekly_digest_body(all_results)
+
+    assert "## Suggestions" in body
+    assert "high-virality" in body
+    assert "A/B testing thumbnails" in body
+
+
+def test_build_weekly_digest_body_suggestions_low_virality(
+    monkeypatch: pytest.MonkeyPatch, client
+) -> None:
+    test_client, _ = client
+    _configure_env(monkeypatch)
+
+    from app.db.base import get_session_factory
+    from app.models.clip import Clip
+    from app.models.job import Job
+
+    with get_session_factory()() as db:
+        job = Job(source_url="https://example.com/video3.mp4", title="Weak Job")
+        db.add(job)
+        db.flush()
+        clip = Clip(
+            job_id=job.id,
+            title="Weak Clip",
+            start_time=0.0,
+            end_time=10.0,
+            transcript_text="test transcript",
+            file_path="/tmp/test3.mp4",
+            virality_score=15,
+        )
+        db.add(clip)
+        db.commit()
+
+    all_results = {"youtube": [trends.TrendResult(**TAVILY_BODY_RESULTS[0])]}
+    body, _, _ = trends._build_weekly_digest_body(all_results)
+
+    assert "## Suggestions" in body
+    assert "below 30" in body
+    assert "review hooks" in body
+
+
+def test_build_weekly_digest_body_no_clips(
+    monkeypatch: pytest.MonkeyPatch, client
+) -> None:
+    _configure_env(monkeypatch)
+
+    all_results = {"youtube": [trends.TrendResult(**TAVILY_BODY_RESULTS[0])]}
+    body, action_url, action_label = trends._build_weekly_digest_body(all_results)
+
+    assert "## Clip Performance" in body
+    assert "No clips scored yet" in body
+    assert action_url is None
+    assert action_label is None

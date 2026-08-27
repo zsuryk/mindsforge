@@ -5,9 +5,14 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel
+from sqlalchemy import func, select
 
 from app.core.config import get_settings
-from app.services import activity, minds
+from app.db.base import get_session_factory
+from app.models.clip import Clip
+from app.models.experiment import AbExperiment, AbExperimentStatus
+from app.models.todo import TodoItemType
+from app.services import activity, minds, todo
 
 logger = logging.getLogger(__name__)
 
@@ -202,12 +207,114 @@ def build_trend_block(memory: dict[str, Any]) -> str | None:
     return "\n".join(lines)
 
 
+def _build_weekly_digest_body(
+    all_results: dict[str, list[TrendResult]],
+    db: Any | None = None,
+) -> tuple[str, str | None, str | None]:
+    """Build the weekly digest body, action_url, and action_label.
+
+    Returns a tuple of (body, action_url, action_label).
+    """
+    lines: list[str] = []
+
+    # --- Trending topics (top 3 across all platforms) ---
+    all_trends: list[TrendResult] = []
+    for results in all_results.values():
+        all_trends.extend(results[:3])
+    if all_trends:
+        lines.append("## Top Trending Topics")
+        for i, trend in enumerate(all_trends[:3], 1):
+            lines.append(f"{i}. [{trend.title}]({trend.url})")
+        lines.append("")
+
+    # --- Clip performance summary ---
+    owns_session = db is None
+    if owns_session:
+        db = get_session_factory()()
+    try:
+        total_clips = db.scalar(select(func.count(Clip.id))) or 0
+        avg_virality = db.scalar(
+            select(func.avg(Clip.virality_score)).where(
+                Clip.virality_score.is_not(None)
+            )
+        )
+        top_clip = db.scalars(
+            select(Clip)
+            .where(Clip.virality_score.is_not(None))
+            .order_by(Clip.virality_score.desc())
+            .limit(1)
+        ).first()
+
+        lines.append("## Clip Performance")
+        if total_clips > 0:
+            lines.append(f"- Total clips: {total_clips}")
+            if avg_virality is not None:
+                lines.append(f"- Average virality: {round(avg_virality, 1)}")
+            if top_clip:
+                lines.append(
+                    f"- Top performer: \"{top_clip.title}\" "
+                    f"(virality {top_clip.virality_score})"
+                )
+        else:
+            lines.append("- No clips scored yet.")
+        lines.append("")
+
+        # --- Actionable suggestions ---
+        suggestions: list[str] = []
+        if total_clips > 0:
+            low_count = db.scalar(
+                select(func.count(Clip.id)).where(
+                    Clip.virality_score.is_not(None),
+                    Clip.virality_score <= 30,
+                )
+            ) or 0
+            high_count = db.scalar(
+                select(func.count(Clip.id)).where(
+                    Clip.virality_score.is_not(None),
+                    Clip.virality_score >= 80,
+                )
+            ) or 0
+            if high_count:
+                suggestions.append(
+                    f"You have {high_count} high-virality clip(s) — "
+                    "consider A/B testing thumbnails to maximize reach."
+                )
+            if low_count:
+                suggestions.append(
+                    f"{low_count} clip(s) scored below 30 — "
+                    "review hooks or consider re-cutting."
+                )
+        if not suggestions:
+            suggestions.append(
+                "Keep creating — the weekly trends will guide your next moves."
+            )
+
+        lines.append("## Suggestions")
+        for s in suggestions:
+            lines.append(f"- {s}")
+
+        body = "\n".join(lines)
+
+        # Link to the best clip if available
+        action_url: str | None = None
+        action_label: str | None = None
+        if top_clip:
+            action_url = f"/clips/{top_clip.id}"
+            action_label = "View top clip"
+
+        return body, action_url, action_label
+    finally:
+        if owns_session:
+            db.close()
+
+
 def weekly_trend_research() -> dict[str, list[TrendResult]]:
     """Run trend research for all platforms on the weekly schedule.
 
     Checks if weekly trends are paused, searches each platform using the
-    default queries, persists results with source='weekly', posts an
-    aggregated notification, and updates the last-run timestamp.
+    default queries, persists results with source='weekly', creates a
+    weekly_digest TodoItem with a rich summary, and updates the last-run
+    timestamp.
 
     Returns a dict mapping platform name to its results.
     """
@@ -228,13 +335,19 @@ def weekly_trend_research() -> dict[str, list[TrendResult]]:
         except TrendSearchError as exc:
             logger.warning("Weekly trend search failed for %s: %s", platform, exc)
 
-    if all_results:
+    if any(results for results in all_results.values()):
         summary_parts = []
         for platform, results in all_results.items():
             summary_parts.append(f"{platform}: {len(results)} results")
         summary = ", ".join(summary_parts)
-        minds.post_chat_notification(
-            f"Weekly trend research complete — {summary}"
+
+        body, action_url, action_label = _build_weekly_digest_body(all_results)
+        todo.create_todo(
+            type=TodoItemType.WEEKLY_DIGEST,
+            title=f"Weekly Trend Digest — {summary}",
+            body=body,
+            action_url=action_url,
+            action_label=action_label,
         )
         activity.log(
             "weekly-trend-research",
