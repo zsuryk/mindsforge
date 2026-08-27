@@ -500,3 +500,12 @@ export async function toggleWeeklyTrends(
   }
   return res.json();
 }
+
+export async function fetchTodoUnreadCount(): Promise<number> {
+  const res = await fetch(`${API_URL}/todos/unread-count`, { cache: "no-store" });
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  const data = await res.json();
+  return data.count;
+}

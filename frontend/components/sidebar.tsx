@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Bell,
   Brain,
   Flame,
   LayoutDashboard,
@@ -12,9 +13,11 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useTodoUnreadCount } from "@/hooks/use-todo-unread-count";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/todo", label: "Todo", icon: Bell },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/jobs", label: "Jobs", icon: ListVideo },
   { href: "/ab-experiments", label: "A/B Experiments", icon: BarChart3 },
@@ -23,6 +26,7 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { count } = useTodoUnreadCount();
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border/40 bg-card/30">
@@ -67,6 +71,11 @@ export function Sidebar() {
                 )}
               />
               {item.label}
+              {item.href === "/todo" && count > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-semibold text-white">
+                  {count > 99 ? "99+" : count}
+                </span>
+              )}
             </Link>
           );
         })}
