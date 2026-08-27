@@ -49,8 +49,8 @@ def fetch_video_title(url: str) -> str | None:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             return info.get("title")
-    except Exception:
-        logger.warning("Could not extract title for %s", url)
+    except Exception as exc:
+        logger.warning("Could not extract title for %s: %s", url, exc)
         return None
 
 

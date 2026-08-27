@@ -82,7 +82,7 @@ def get_weekly_trends_status() -> WeeklyTrendsStatusOut:
 @router.post("/chat/trends/weekly-toggle", response_model=WeeklyTrendsStatusOut)
 def toggle_weekly_trends(payload: WeeklyTrendsToggleIn) -> WeeklyTrendsStatusOut:
     try:
-        status = trends.toggle_weekly_trends(payload.paused)
+        result = trends.toggle_weekly_trends(payload.paused)
     except minds.MindsError as exc:
         _raise_upstream_error(exc)
-    return WeeklyTrendsStatusOut(**status)
+    return WeeklyTrendsStatusOut(**result)

@@ -57,7 +57,7 @@ def _simulate_sweep(variant: dict[str, object], rng: random.Random) -> int:
     return new_views
 
 
-def _fail_experiment(db: Session, experiment: AbExperiment, message: str) -> None:
+def _fail_experiment(db: Session, experiment: AbExperiment, message: str | Exception) -> None:
     """Transition an experiment to FAILED with a stored error message."""
     experiment.status = AbExperimentStatus.FAILED
     experiment.error_message = str(message)[:2048]

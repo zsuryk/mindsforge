@@ -25,3 +25,6 @@ next-env.d.ts
 
 # Media uploads
 backend/media/
+
+# Hackathon demo files
+.hackathon/

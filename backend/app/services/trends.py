@@ -209,7 +209,7 @@ def build_trend_block(memory: dict[str, Any]) -> str | None:
 
 def _build_weekly_digest_body(
     all_results: dict[str, list[TrendResult]],
-    db: Any | None = None,
+    db: Any = None,
 ) -> tuple[str, str | None, str | None]:
     """Build the weekly digest body, action_url, and action_label.
 

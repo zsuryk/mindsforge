@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
   ArrowUpRight,
   Bell,

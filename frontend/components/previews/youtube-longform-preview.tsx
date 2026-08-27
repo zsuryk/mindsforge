@@ -63,7 +63,7 @@ function PollCard({ poll }: { poll: CommunityPoll }) {
       <ul className="space-y-2">
         {poll.options.map((option, i) => (
           <li
-            key={option}
+            key={`${option}-${i}`}
             className="flex items-center gap-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-foreground"
           >
             <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground/40">
