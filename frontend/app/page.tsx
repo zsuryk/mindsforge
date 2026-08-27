@@ -109,7 +109,7 @@ function MindAtWorkPanel({ events }: { events: MindActivity[] }) {
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 p-6 pb-4">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <span className="flex h-2 w-2 rounded-full bg-mind shadow-[0_0_8px_theme(colors.mind)]" />
+          <span className="flex h-2 w-2 rounded-full bg-mind shadow-[0_0_8px_hsl(var(--mind))]" />
           Mind at Work
         </CardTitle>
       </CardHeader>
