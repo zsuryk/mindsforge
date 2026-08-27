@@ -12,6 +12,7 @@ from app.api.adaptations import router as adaptations_router
 from app.api.chat import router as chat_router
 from app.api.clips import router as clips_router
 from app.api.dashboard import router as dashboard_router
+from app.api.todos import router as todos_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.memory import router as memory_router
@@ -153,3 +154,4 @@ app.include_router(ab_tests_router, prefix=settings.API_V1_PREFIX, tags=["ab-tes
 app.include_router(adaptations_router, prefix=settings.API_V1_PREFIX, tags=["adaptations"])
 app.include_router(chat_router, prefix=settings.API_V1_PREFIX, tags=["chat"])
 app.include_router(dashboard_router, prefix=settings.API_V1_PREFIX, tags=["dashboard"])
+app.include_router(todos_router, prefix=settings.API_V1_PREFIX, tags=["todos"])
