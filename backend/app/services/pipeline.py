@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.job import Job, JobStatus
-from app.services import activity, media, minds, transcription
+from app.services import activity, media, minds, todo, transcription
 from app.services import clips as clips_service
 from app.services.transcription import TranscriptSegment
 
@@ -96,6 +96,8 @@ def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
             f"Scored clip '{clip.title}' — virality {clip.virality_score}/100",
             ref_id=clip.id,
         )
+
+    todo.generate_clip_suggestions(job.id, clips, db=db)
 
 
 def run_pipeline(job_id: str) -> None:

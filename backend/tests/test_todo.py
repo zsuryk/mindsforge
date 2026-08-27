@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.models.clip import Clip
 from app.models.todo import TodoItemType
 from app.services import todo
 
@@ -289,3 +290,93 @@ def test_get_todos_archived_filter(client: tuple[TestClient, Path]) -> None:
 
     res = test_client.get("/api/v1/todos?archived=true")
     assert any(i["id"] == item_id for i in res.json()["items"])
+
+
+# ---------------------------------------------------------------------------
+# Clip suggestion engine tests
+# ---------------------------------------------------------------------------
+
+
+def _make_clip(job_id: str = "job-1", virality_score: int | None = None) -> Clip:
+    return Clip(
+        id="clip-1",
+        job_id=job_id,
+        title="Test clip",
+        start_time=0.0,
+        end_time=30.0,
+        transcript_text="test transcript",
+        file_path="/tmp/clip.mp4",
+        virality_score=virality_score,
+    )
+
+
+def test_high_virality_clip_suggests_ab_testing(client: tuple[TestClient, Path]) -> None:
+    clip = _make_clip(virality_score=85)
+    suggestions = todo.generate_clip_suggestions("job-1", [clip])
+    assert len(suggestions) == 1  # single clip, no multi-clip adaptation
+    titles = [s.title for s in suggestions]
+    assert any("High-performing clip" in t for t in titles)
+    bodies = [s.body for s in suggestions]
+    assert any("A/B testing" in b for b in bodies)
+
+
+def test_low_virality_clip_suggests_recut(client: tuple[TestClient, Path]) -> None:
+    clip = _make_clip(virality_score=25)
+    suggestions = todo.generate_clip_suggestions("job-1", [clip])
+    assert len(suggestions) == 1  # single clip, no multi-clip adaptation
+    titles = [s.title for s in suggestions]
+    assert any("Low-performing clip" in t for t in titles)
+    bodies = [s.body for s in suggestions]
+    assert any("reviewing the hook" in b for b in bodies)
+
+
+def test_mid_range_virality_produces_no_suggestion(client: tuple[TestClient, Path]) -> None:
+    clip = _make_clip(virality_score=50)
+    suggestions = todo.generate_clip_suggestions("job-1", [clip])
+    assert len(suggestions) == 0  # mid-range, no suggestion
+
+
+def test_multi_clip_job_suggests_adaptation(client: tuple[TestClient, Path]) -> None:
+    clip1 = _make_clip(virality_score=85)
+    clip1.id = "clip-1"
+    clip2 = _make_clip(virality_score=25)
+    clip2.id = "clip-2"
+    suggestions = todo.generate_clip_suggestions("job-1", [clip1, clip2])
+    titles = [s.title for s in suggestions]
+    assert any("Cross-platform adaptation" in t for t in titles)
+    bodies = [s.body for s in suggestions]
+    assert any("2 clips" in b for b in bodies)
+
+
+def test_single_clip_no_adaptation_suggestion(client: tuple[TestClient, Path]) -> None:
+    clip = _make_clip(virality_score=85)
+    suggestions = todo.generate_clip_suggestions("job-1", [clip])
+    titles = [s.title for s in suggestions]
+    assert not any("Cross-platform" in t for t in titles)
+
+
+def test_clips_with_action_urls(client: tuple[TestClient, Path]) -> None:
+    clip = _make_clip(virality_score=85)
+    suggestions = todo.generate_clip_suggestions("job-1", [clip])
+    for s in suggestions:
+        if "High-performing" in s.title:
+            assert s.action_url == "/clips/clip-1"
+            assert s.action_label == "View clip"
+        elif "Cross-platform" in s.title:
+            assert s.action_url == "/jobs/job-1"
+            assert s.action_label == "View job"
+
+
+def test_clips_with_none_virality_skipped(client: tuple[TestClient, Path]) -> None:
+    clip = _make_clip(virality_score=None)
+    suggestions = todo.generate_clip_suggestions("job-1", [clip])
+    titles = [s.title for s in suggestions]
+    assert not any("High-performing" in t or "Low-performing" in t for t in titles)
+    # Multi-clip suggestion should still appear for single clip with None score
+    # Actually, single clip shouldn't get multi-clip suggestion
+    assert len(suggestions) == 0
+
+
+def test_empty_clips_list(client: tuple[TestClient, Path]) -> None:
+    suggestions = todo.generate_clip_suggestions("job-1", [])
+    assert len(suggestions) == 0
