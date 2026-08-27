@@ -121,7 +121,7 @@ export function PersistenceCard() {
             Loading memory…
           </p>
         ) : (
-          <div className="grid gap-x-8 px-6 pb-2 lg:grid-cols-4">
+          <div className="grid max-h-80 gap-x-8 overflow-y-auto px-6 pb-2 lg:grid-cols-4">
             <section className="pb-4">
               <h3 className="flex items-center gap-1.5 pt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <Quote className="h-3.5 w-3.5" /> Brand voice
