@@ -509,3 +509,61 @@ export async function fetchTodoUnreadCount(): Promise<number> {
   const data = await res.json();
   return data.count;
 }
+
+export type TodoItemType = "weekly_digest" | "clip_suggestion" | "experiment_result" | "trend_alert";
+
+export type TodoItem = {
+  id: string;
+  type: TodoItemType;
+  title: string;
+  body: string;
+  action_url: string | null;
+  action_label: string | null;
+  is_read: boolean;
+  is_archived: boolean;
+  created_at: string;
+};
+
+export type TodoListResponse = {
+  items: TodoItem[];
+  unread_count: number;
+};
+
+export async function fetchTodos(params?: {
+  type?: TodoItemType;
+  unread?: boolean;
+  archived?: boolean;
+}): Promise<TodoListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.type) searchParams.set("type", params.type);
+  if (params?.unread !== undefined) searchParams.set("unread", String(params.unread));
+  if (params?.archived !== undefined) searchParams.set("archived", String(params.archived));
+
+  const query = searchParams.toString();
+  const url = `${API_URL}/todos${query ? `?${query}` : ""}`;
+
+  debugLog("GET", url);
+  const res = await fetch(url, { cache: "no-store" });
+  debugLog("GET /todos ->", res.status);
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
+
+export async function updateTodo(
+  id: string,
+  data: { is_read?: boolean; is_archived?: boolean },
+): Promise<TodoItem> {
+  debugLog("PATCH", `${API_URL}/todos/${id}`, data);
+  const res = await fetch(`${API_URL}/todos/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  debugLog("PATCH /todos/" + id + " ->", res.status);
+  if (!res.ok) {
+    throw await extractError(res);
+  }
+  return res.json();
+}
