@@ -4,9 +4,9 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done (73be1dc)
 
-- [ ] No `minds` imports or `MINDS_*` env vars remain anywhere in backend code
-- [ ] Health endpoint returns the renamed LLM status and frontend renders it
-- [ ] Sidebar shows neutral backend copy
-- [ ] Backend test suite is green without the old Minds module
+- [x] No `minds` imports or `MINDS_*` env vars remain anywhere in backend code
+- [x] Health endpoint returns the renamed LLM status and frontend renders it
+- [x] Sidebar shows neutral backend copy
+- [x] Backend test suite is green without the old Minds module
