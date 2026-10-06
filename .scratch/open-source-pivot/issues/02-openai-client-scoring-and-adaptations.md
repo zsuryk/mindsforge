@@ -4,10 +4,10 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done (94fc396)
 
-- [ ] Pipeline clip scoring (`generate_clip_metadata`) works end-to-end against an OpenAI-compatible endpoint
-- [ ] Adaptation generation (`generate_adaptation_features`) works end-to-end with the same client
-- [ ] JSON extraction tolerates fences; pydantic manifest validation failures surface as the domain error
-- [ ] Missing `OPENAI_API_KEY` (when required) or network failure produces a clear error, not a silent fallback
-- [ ] Health endpoint still answers; LLM status probe for the new backend is stubbed or deferred to ticket 04
+- [x] Pipeline clip scoring (`generate_clip_metadata`) works end-to-end against an OpenAI-compatible endpoint
+- [x] Adaptation generation (`generate_adaptation_features`) works end-to-end with the same client
+- [x] JSON extraction tolerates fences; pydantic manifest validation failures surface as the domain error
+- [x] Missing `OPENAI_API_KEY` (when required) or network failure produces a clear error, not a silent fallback
+- [x] Health endpoint still answers; LLM status probe for the new backend is stubbed (live probe deferred to ticket 04)
