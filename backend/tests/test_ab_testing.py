@@ -72,6 +72,8 @@ def stub_winner(
 def _minds_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
     monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
 
     get_settings.cache_clear()

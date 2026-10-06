@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.services.minds import ClipMetadata
+from app.services.llm import ClipMetadata
 
 
 class AdaptationSummary(BaseModel):

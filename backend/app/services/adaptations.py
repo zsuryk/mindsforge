@@ -6,7 +6,7 @@ from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import AdaptationStatus, ClipAdaptation
 from app.models.todo import TodoItemType
-from app.services import activity, minds, todo as todo_module
+from app.services import activity, llm, minds, todo as todo_module
 from app.services.adaptation_assets import render_adaptation_assets
 from app.services.transcription import TranscriptSegment
 
@@ -86,7 +86,7 @@ def _persist_adaptation_history(adaptation: ClipAdaptation) -> None:
         logger.info(
             "Adaptation %s: history written to Minds memory", adaptation.id
         )
-    except minds.MindsError as exc:
+    except llm.LLMError as exc:
         logger.warning(
             "Adaptation %s: memory write failed, history kept locally: %s",
             adaptation.id,
@@ -115,7 +115,7 @@ def generate_adaptation(adaptation_id: str) -> None:
                 TranscriptSegment(**segment)
                 for segment in (clip.job.transcript_segments or [])
             ]
-            manifest = minds.generate_adaptation_features(
+            manifest = llm.generate_adaptation_features(
                 clip={
                     "id": clip.id,
                     "title": clip.title,
@@ -127,14 +127,6 @@ def generate_adaptation(adaptation_id: str) -> None:
                 surface=adaptation.surface.value,
                 segments=[asdict(segment) for segment in segments],
                 chat_context=_chat_context(),
-                # Fresh conversation per attempt: retries re-send byte-identical
-                # prompts, and a Mind that sees the same templated prompt repeat
-                # in one conversation eventually refuses in prose (ADR-0002).
-                # The Builder API caps aliases at 64 chars, so the adaptation id
-                # is truncated and only the fresh hex keeps the alias unique.
-                conversation_alias=(
-                    f"{minds.MESSAGING_ALIAS}-adapt-{adaptation.id[:8]}-{uuid4().hex}"
-                ),
             )
             adaptation.features = manifest.model_dump(exclude={"platform", "surface"})
             db.commit()

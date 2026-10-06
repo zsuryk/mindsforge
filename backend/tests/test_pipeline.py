@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
-from app.services import media, minds, transcription
+from app.services import llm, media, minds, transcription
 from app.services.pipeline import run_pipeline
 from app.services.transcription import Transcription, TranscriptSegment
 
@@ -23,12 +23,14 @@ def _enable_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
 def _stub_minds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
     monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     get_settings.cache_clear()
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
     monkeypatch.setattr(
-        minds,
+        llm,
         "generate_clip_metadata",
-        lambda transcript, duration_seconds=None, chat_context=None, **kwargs: minds.ClipMetadata(
+        lambda transcript, duration_seconds=None, chat_context=None, **kwargs: llm.ClipMetadata(
             virality_score=80,
             suggested_titles=["Title A", "Title B"],
             platform_hooks={"youtube_shorts": ["s"], "tiktok": ["t"], "x": ["x"]},
@@ -261,32 +263,32 @@ def test_process_unknown_job_is_a_noop(
     assert test_client.get("/api/v1/jobs/does-not-exist").status_code == 404
 
 
-def test_unconfigured_minds_fails_job_at_scoring_stage(
+def test_unconfigured_llm_fails_job_at_scoring_stage(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
     _stub_pipeline_stages(monkeypatch, tmp_path)
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
+    monkeypatch.setenv("OPENAI_BASE_URL", "")
     get_settings.cache_clear()
 
     res = test_client.post(
         "/api/v1/jobs/process",
-        data={"source_url": "https://example.com/no-minds.mp4"},
+        data={"source_url": "https://example.com/no-llm.mp4"},
     )
     job_id = res.json()["job_id"]
 
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
     assert job["status"] == "FAILED"
-    assert "MINDS_BUILDER_API_KEY" in job["error_message"]
+    assert "OPENAI_BASE_URL" in job["error_message"]
     assert "fail-closed" in job["error_message"]
 
     clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
     assert clips == []
 
 
-def test_clip_less_job_fails_when_minds_unconfigured(
+def test_clip_less_job_fails_when_llm_unconfigured(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -305,22 +307,22 @@ def test_clip_less_job_fails_when_minds_unconfigured(
     monkeypatch.setattr(
         media, "cut_clip", lambda source, dest, start, end: pytest.fail("cut called")
     )
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
+    monkeypatch.setenv("OPENAI_BASE_URL", "")
     get_settings.cache_clear()
 
     res = test_client.post(
         "/api/v1/jobs/process",
-        data={"source_url": "https://example.com/silent-no-minds.mp4"},
+        data={"source_url": "https://example.com/silent-no-llm.mp4"},
     )
     job_id = res.json()["job_id"]
 
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
     assert job["status"] == "FAILED"
-    assert "MINDS_BUILDER_API_KEY" in job["error_message"]
+    assert "OPENAI_BASE_URL" in job["error_message"]
     assert test_client.get(f"/api/v1/jobs/{job_id}/clips").json() == []
 
 
-def test_scoring_minds_error_fails_job(
+def test_scoring_llm_error_fails_job(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -329,9 +331,9 @@ def test_scoring_minds_error_fails_job(
     _stub_pipeline_stages(monkeypatch, tmp_path)
 
     def failing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):
-        raise minds.MindsError("builder api down")
+        raise llm.LLMError("LLM request failed")
 
-    monkeypatch.setattr(minds, "generate_clip_metadata", failing_metadata)
+    monkeypatch.setattr(llm, "generate_clip_metadata", failing_metadata)
 
     res = test_client.post(
         "/api/v1/jobs/process",
@@ -341,7 +343,7 @@ def test_scoring_minds_error_fails_job(
 
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
     assert job["status"] == "FAILED"
-    assert "builder api down" in job["error_message"]
+    assert "LLM request failed" in job["error_message"]
 
     clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
     assert clips == []
@@ -358,18 +360,18 @@ def test_memory_fetch_failure_still_scores_without_context(
     monkeypatch.setattr(
         minds,
         "fetch_memory",
-        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("memory store down")),
     )
 
     def capturing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):
         contexts.append(chat_context)
-        return minds.ClipMetadata(
+        return llm.ClipMetadata(
             virality_score=70,
             suggested_titles=["A"],
             platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},
         )
 
-    monkeypatch.setattr(minds, "generate_clip_metadata", capturing_metadata)
+    monkeypatch.setattr(llm, "generate_clip_metadata", capturing_metadata)
 
     res = test_client.post(
         "/api/v1/jobs/process",
@@ -382,42 +384,3 @@ def test_memory_fetch_failure_still_scores_without_context(
     clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
     assert all(clip["virality_score"] == 70 for clip in clips)
     assert contexts == [None]
-
-
-def test_each_pipeline_run_uses_fresh_conversation_alias(
-    client: tuple[TestClient, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    test_client, tmp_path = client
-    _enable_pipeline(monkeypatch)
-    _stub_pipeline_stages(monkeypatch, tmp_path)
-    aliases: list[str] = []
-
-    def capturing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):
-        aliases.append(kwargs.get("conversation_alias"))
-        return minds.ClipMetadata(
-            virality_score=70,
-            suggested_titles=["A"],
-            platform_hooks={"youtube_shorts": [], "tiktok": [], "x": []},
-        )
-
-    monkeypatch.setattr(minds, "generate_clip_metadata", capturing_metadata)
-
-    first = test_client.post(
-        "/api/v1/jobs/process",
-        data={"source_url": "https://example.com/alias-one.mp4"},
-    ).json()["job_id"]
-    second = test_client.post(
-        "/api/v1/jobs/process",
-        data={"source_url": "https://example.com/alias-two.mp4"},
-    ).json()["job_id"]
-
-    assert test_client.get(f"/api/v1/jobs/{first}").json()["status"] == "COMPLETED"
-    assert test_client.get(f"/api/v1/jobs/{second}").json()["status"] == "COMPLETED"
-
-    assert len(aliases) == 2
-    assert aliases[0] != aliases[1]
-    for alias in aliases:
-        assert alias is not None and alias.startswith(f"{minds.MESSAGING_ALIAS}-")
-        assert len(alias) <= 64, "Builder API rejects aliases longer than 64 chars"
-        assert re.fullmatch(r"[a-z0-9_-]+", alias)

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     MEDIA_DIR: Path = BACKEND_DIR / "media"
     MINDS_BUILDER_API_KEY: str = ""
     MINDS_AGENT_ID: str = ""
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_TIMEOUT_SECONDS: float = 120.0
     TAVILY_API_KEY: str = ""
     TRANSCRIPTION_PROVIDER: str = "local"
     WHISPER_MODEL: str = "small"

@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.job import Job, JobStatus
-from app.services import activity, media, minds, todo, transcription
+from app.services import activity, llm, media, minds, todo, transcription
 from app.services import clips as clips_service
 from app.services.transcription import TranscriptSegment
 
@@ -60,17 +60,16 @@ def _extract_clips(db: Session, job: Job, source: Path) -> None:
         )
 
 
-def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
-    """Ask the Mind to score each extracted clip and persist the verdict.
+def _score_clips(db: Session, job: Job) -> None:
+    """Ask the LLM to score each extracted clip and persist the verdict.
 
-    Scoring is fail-closed (ADR-0002): Minds must be configured and every
-    verdict call must succeed, otherwise the job fails. The chat-context
+    Scoring is fail-closed (ADR-0002): the LLM backend must be configured and
+    every verdict call must succeed, otherwise the job fails. The chat-context
     fetch may still degrade to None — only verdict calls are gated.
     """
-    settings = get_settings()
-    if not settings.MINDS_BUILDER_API_KEY or not settings.MINDS_AGENT_ID:
-        raise minds.MindsConfigError(
-            "Minds is not configured (MINDS_BUILDER_API_KEY/MINDS_AGENT_ID); "
+    if not llm.is_configured():
+        raise llm.LLMConfigError(
+            "The LLM backend is not configured (OPENAI_BASE_URL/OPENAI_API_KEY); "
             "scoring is fail-closed so the job cannot complete"
         )
     clips = db.scalars(
@@ -82,11 +81,10 @@ def _score_clips(db: Session, job: Job, conversation_alias: str) -> None:
     chat_context = minds.build_chat_context()
 
     for clip in clips:
-        metadata = minds.generate_clip_metadata(
+        metadata = llm.generate_clip_metadata(
             clip.transcript_text,
             duration_seconds=clip.end_time - clip.start_time,
             chat_context=chat_context,
-            conversation_alias=conversation_alias,
         )
         clip.virality_score = metadata.virality_score
         clip.suggested_hooks = metadata.model_dump()
@@ -150,15 +148,7 @@ def run_pipeline(job_id: str) -> None:
             db.commit()
             logger.debug("Job %s: extracting clips", job.id)
             _extract_clips(db, job, source)
-            # Fresh conversation per run: retries re-send identical scoring
-            # prompts, and a Mind that sees the same templated prompt repeat in
-            # one conversation eventually refuses to answer (surfacing as a
-            # non-JSON reply). Isolating each attempt prevents that build-up.
-            # The Builder API caps aliases at 64 chars, so the job id is
-            # truncated and only the fresh hex keeps the alias unique.
-            run_alias = f"{minds.MESSAGING_ALIAS}-{job.id[:8]}-{uuid4().hex}"
-            logger.debug("Job %s: scoring clips with alias %s", job.id, run_alias)
-            _score_clips(db, job, run_alias)
+            _score_clips(db, job)
             job.status = JobStatus.COMPLETED
             db.commit()
             logger.info("Job %s completed with clips extracted", job.id)

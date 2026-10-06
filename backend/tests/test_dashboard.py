@@ -113,11 +113,13 @@ def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
 
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
     monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: None)
     monkeypatch.setattr(
-        minds,
+        llm,
         "generate_clip_metadata",
-        lambda transcript, duration_seconds=None, chat_context=None, **kwargs: minds.ClipMetadata(
+        lambda transcript, duration_seconds=None, chat_context=None, **kwargs: llm.ClipMetadata(
             virality_score=82,
             suggested_titles=["Title A"],
             platform_hooks={"youtube_shorts": ["s"], "tiktok": ["t"], "x": ["x"]},

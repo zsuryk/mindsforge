@@ -12,7 +12,7 @@ from app.db.base import get_session_factory
 from app.models.adaptation import ClipAdaptation
 from app.models.clip import Clip
 from app.models.job import Job
-from app.services import media, minds
+from app.services import llm, media, minds
 from app.services.adaptation_assets import (
     render_adaptation_assets,
     write_chapters,
@@ -365,11 +365,11 @@ def test_adaptation_api_serves_rendered_assets(
         clip_id = clip.id
 
     def _stub_features(clip, platform, surface, segments, chat_context=None, **kwargs):
-        return minds.AdaptationFeatures(
+        return llm.AdaptationFeatures(
             platform=platform, surface=surface, **LONG_FORM_FEATURES
         )
 
-    monkeypatch.setattr(minds, "generate_adaptation_features", _stub_features)
+    monkeypatch.setattr(llm, "generate_adaptation_features", _stub_features)
 
     res = test_client.post(f"/api/v1/clips/{clip_id}/adaptations/youtube/LONG_FORM")
     assert res.status_code == 202
