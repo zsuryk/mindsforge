@@ -17,7 +17,7 @@ from app.models.experiment import (
 )
 from app.models.job import Job
 from app.models.todo import TodoItemType
-from app.services import ab_testing, minds, todo as todo_module
+from app.services import ab_testing, llm, todo as todo_module
 
 
 def make_clip(db, tmp_path: Path, title: str = "My clip") -> Clip:
@@ -63,9 +63,9 @@ def stub_winner(
 ) -> None:
     def decide(platform, variants, transcript, chat_context=None, conversation_alias=None):
         picked = variant_id if variant_id is not None else variants[0]["variant_id"]
-        return minds.ExperimentVerdict(winning_variant_id=picked, reasoning=reasoning)
+        return llm.ExperimentVerdict(winning_variant_id=picked, reasoning=reasoning)
 
-    monkeypatch.setattr(minds, "decide_experiment_winner", decide)
+    monkeypatch.setattr(llm, "decide_experiment_winner", decide)
 
 
 @pytest.fixture()
@@ -590,11 +590,11 @@ def test_mind_failure_fails_experiment_with_error_message(
         )
 
     monkeypatch.setattr(
-        minds,
+        llm,
         "decide_experiment_winner",
         lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
             _ for _ in ()
-        ).throw(minds.MindsError("builder api down")),
+        ).throw(llm.LLMError("builder api down")),
     )
 
     concluded = ab_testing.refresh_active_experiments(view_threshold=1000)
@@ -616,12 +616,11 @@ def test_mind_failure_fails_experiment_with_error_message(
     assert "builder api down" in failed_body["error_message"]
 
 
-def test_unconfigured_minds_fails_experiment_at_conclusion(
+def test_unconfigured_llm_fails_experiment_at_conclusion(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "")
-    monkeypatch.setenv("MINDS_AGENT_ID", "")
+    monkeypatch.setenv("OPENAI_BASE_URL", "")
     from app.core.config import get_settings
 
     get_settings.cache_clear()
@@ -643,7 +642,7 @@ def test_unconfigured_minds_fails_experiment_at_conclusion(
         stored = db.get(AbExperiment, experiment.id)
         assert stored.status == AbExperimentStatus.FAILED
         assert stored.winning_variant_id is None
-        assert "MINDS" in stored.error_message
+        assert "OPENAI_BASE_URL" in stored.error_message
         assert "not configured" in stored.error_message
 
 
@@ -664,11 +663,11 @@ def test_mind_picking_unknown_variant_fails_experiment(
         )
 
     monkeypatch.setattr(
-        minds,
+        llm,
         "decide_experiment_winner",
         lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
             _ for _ in ()
-        ).throw(minds.MindsError("Experiment verdict picked unknown variant id 'ghost'")),
+        ).throw(llm.LLMError("Experiment verdict picked unknown variant id 'ghost'")),
     )
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
@@ -706,11 +705,11 @@ def test_unexpected_exception_fails_only_that_experiment(
     def decide(platform, variants, transcript, chat_context=None, conversation_alias=None):
         if variants[0]["variant_id"] == "v1":
             raise RuntimeError("boom in the verdict code")
-        return minds.ExperimentVerdict(
+        return llm.ExperimentVerdict(
             winning_variant_id="v3", reasoning="C won."
         )
 
-    monkeypatch.setattr(minds, "decide_experiment_winner", decide)
+    monkeypatch.setattr(llm, "decide_experiment_winner", decide)
 
     concluded = ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -756,25 +755,17 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
             ],
         )
 
-    class FakeResponse:
-        status_code = 200
-
-        def json(self):
-            return {"response": '{"winning_variant_id": "v1", "reasoning": "A won"}'}
-
     captured: dict[str, object] = {}
 
-    def fake_message_mind(agent_id, prompt, **kwargs):
-        captured["agent_id"] = agent_id
-        captured["prompt"] = prompt
+    def fake_chat_completion(messages, **kwargs):
+        captured["prompt"] = messages[0]["content"]
         return '{"winning_variant_id": "v1", "reasoning": "A won"}'
 
-    monkeypatch.setattr(minds, "_message_mind", fake_message_mind)
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(llm, "_chat_completion", fake_chat_completion)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
-    assert captured["agent_id"] == "agent-1"
     prompt = captured["prompt"]
     assert isinstance(prompt, str)
     assert "thumbnail: /media/adaptations/adapt-1/thumb_1.png" in prompt
@@ -784,7 +775,7 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
     assert "lesson" not in prompt
 
 
-def test_conclusion_writes_insight_to_minds_memory(
+def test_conclusion_writes_insight_to_memory(
     client: tuple[TestClient, Path],
     _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
@@ -803,21 +794,19 @@ def test_conclusion_writes_insight_to_minds_memory(
 
     stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
     monkeypatch.setattr(
-        minds,
+        llm,
         "fetch_memory",
-        lambda agent_id: {"ab_test_history": [{"experiment_id": "older"}]},
+        lambda: {"ab_test_history": [{"experiment_id": "older"}]},
     )
     captured: dict[str, object] = {}
     monkeypatch.setattr(
-        minds,
+        llm,
         "update_memory",
-        lambda agent_id, key, value: captured.update(agent_id=agent_id, key=key, value=value)
-        or True,
+        lambda key, value: captured.update(key=key, value=value) or True,
     )
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
-    assert captured["agent_id"] == "agent-1"
     assert captured["key"] == "ab_test_history"
     history = captured["value"]
     assert isinstance(history, list) and len(history) == 2
@@ -850,9 +839,9 @@ def test_memory_write_failure_still_concludes_experiment(
 
     stub_winner(monkeypatch, variant_id="v1", reasoning="A won.")
     monkeypatch.setattr(
-        minds,
+        llm,
         "fetch_memory",
-        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+        lambda: (_ for _ in ()).throw(llm.LLMError("builder api down")),
     )
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
@@ -907,12 +896,12 @@ def test_launched_experiment_runs_to_conclusion_via_sweeps(
         monkeypatch,
         reasoning="The debate-style hook out-performed; reuse the formula.",
     )
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
     captured: dict[str, object] = {}
     monkeypatch.setattr(
-        minds,
+        llm,
         "update_memory",
-        lambda agent_id, key, value: captured.update(value=value) or True,
+        lambda key, value: captured.update(value=value) or True,
     )
 
     rng = random.Random(7)
@@ -958,10 +947,10 @@ def test_concluded_experiment_does_not_post_chat_notification(
         )
 
     stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
+    monkeypatch.setattr(llm, "update_memory", lambda key, value: True)
     notifications: list[str] = []
-    monkeypatch.setattr(minds, "notify_mind", notifications.append)
+    monkeypatch.setattr(llm, "notify_mind", notifications.append)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -986,14 +975,14 @@ def test_failed_experiment_does_not_post_chat_notification(
         )
 
     monkeypatch.setattr(
-        minds,
+        llm,
         "decide_experiment_winner",
         lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
             _ for _ in ()
-        ).throw(minds.MindsError("builder api down")),
+        ).throw(llm.LLMError("builder api down")),
     )
     notifications: list[str] = []
-    monkeypatch.setattr(minds, "notify_mind", notifications.append)
+    monkeypatch.setattr(llm, "notify_mind", notifications.append)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -1060,8 +1049,8 @@ def test_conclusion_logs_activity_row_with_winner(
         )
 
     stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
+    monkeypatch.setattr(llm, "update_memory", lambda key, value: True)
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
@@ -1096,11 +1085,11 @@ def test_failed_experiment_logs_activity_row(
         )
 
     monkeypatch.setattr(
-        minds,
+        llm,
         "decide_experiment_winner",
         lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
             _ for _ in ()
-        ).throw(minds.MindsError("builder api down")),
+        ).throw(llm.LLMError("builder api down")),
     )
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
@@ -1129,8 +1118,8 @@ def test_concluded_experiment_creates_todo_item(
         )
 
     stub_winner(monkeypatch, variant_id="v1", reasoning="A won; reuse its hook style.")
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: True)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
+    monkeypatch.setattr(llm, "update_memory", lambda key, value: True)
 
     created: list[dict] = []
 
@@ -1169,11 +1158,11 @@ def test_failed_experiment_creates_todo_item(
         )
 
     monkeypatch.setattr(
-        minds,
+        llm,
         "decide_experiment_winner",
         lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
             _ for _ in ()
-        ).throw(minds.MindsError("builder api down")),
+        ).throw(llm.LLMError("builder api down")),
     )
 
     created: list[dict] = []

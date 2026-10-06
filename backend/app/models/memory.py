@@ -12,8 +12,8 @@ from app.models.job import utcnow
 class MemoryEntry(Base):
     """A single key/value cell of the Mind's persistent context tree.
 
-    The Minds Builder API no longer persists a memory tree, so it lives
-    locally keyed by agent id (see minds.fetch_memory / update_memory).
+    The memory tree is persisted locally, keyed by agent id
+    (see llm.fetch_memory / update_memory).
     """
 
     __tablename__ = "mind_memory"

@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from app.models.todo import TodoItemType
-from app.services import minds, trends
+from app.services import llm, trends
 from app.services import todo as todo_module
 
 TAVILY_BODY = {
@@ -82,34 +82,9 @@ def _stub_tavily(
     return calls
 
 
-def _stub_chat(monkeypatch: pytest.MonkeyPatch):
-    posts: list[tuple[str, dict]] = []
-    initialised = False
-
-    def fake_post(path, payload):
-        nonlocal initialised
-        posts.append((path, payload))
-        if (
-            path == "/v1/messaging/message"
-            and payload.get("messageText") == minds.CHAT_INIT_INSTRUCTION
-        ):
-            initialised = True
-        return FakeResponse({}, 200)
-
-    def fake_get(path, params=None):
-        if params and params.get("limit") == 1:
-            if initialised:
-                return FakeResponse([{"senderType": 1, "messageText": "old row"}], 200)
-            return FakeResponse([], 200)
-        return FakeResponse([{"senderType": 0, "messageText": "chat reply"}], 200)
-
-    monkeypatch.setattr(minds, "_post", fake_post)
-    monkeypatch.setattr(minds, "_get", fake_get)
-    return posts
-
-
-def _message_posts(posts: list[tuple[str, dict]]) -> list[dict]:
-    return [payload for path, payload in posts if path == "/v1/messaging/message"]
+def _stub_chat(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reply to chat turns with a canned answer (Tavily traffic is separate)."""
+    monkeypatch.setattr(llm, "_chat_completion", lambda messages, **kwargs: "chat reply")
 
 
 # --- search_trends ---
@@ -193,7 +168,7 @@ def test_api_chat_trends_researches_persists_and_notifies(
 ) -> None:
     _configure_env(monkeypatch)
     _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    posts = _stub_chat(monkeypatch)
+    _stub_chat(monkeypatch)
 
     test_client, _ = client
     res = test_client.post(
@@ -215,10 +190,10 @@ def test_api_chat_trends_researches_persists_and_notifies(
     assert entry["results"][0]["title"] == "Best Fitness Shorts"
     assert entry["researched_at"]
 
-    rows = minds._chat_rows()
+    rows = llm._chat_rows()
     notification = rows[-1]
     assert notification.role == "system"
-    assert notification.text.startswith(minds.SYSTEM_MARKER)
+    assert notification.text.startswith(llm.SYSTEM_MARKER)
     assert "Researched 'fitness shorts':" in notification.text
     assert (
         "1. Best Fitness Shorts — https://example.com/fitness"
@@ -244,15 +219,15 @@ def test_research_trends_bounds_memory_to_last_10_entries(
         for i in range(9)
     ]
     monkeypatch.setattr(
-        minds, "fetch_memory", lambda agent_id: {"trend_research": existing}
+        llm, "fetch_memory", lambda: {"trend_research": existing}
     )
-    monkeypatch.setattr(minds, "post_chat_notification", lambda text: None)
+    monkeypatch.setattr(llm, "post_chat_notification", lambda text: None)
     captured: dict = {}
     monkeypatch.setattr(
-        minds,
+        llm,
         "update_memory",
-        lambda agent_id, key, value: (
-            captured.update(agent_id=agent_id, key=key, value=value) or True
+        lambda key, value: (
+            captured.update(key=key, value=value) or True
         ),
     )
 
@@ -286,7 +261,7 @@ def test_inline_trigger_researches_before_posting_user_message(
 ) -> None:
     _configure_env(monkeypatch)
     tavily_calls = _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    posts = _stub_chat(monkeypatch)
+    _stub_chat(monkeypatch)
 
     test_client, _ = client
     res = test_client.post(
@@ -297,11 +272,8 @@ def test_inline_trigger_researches_before_posting_user_message(
     assert res.json()["reply"] == "chat reply"
     assert tavily_calls[0]["json"]["query"] == "fitness shorts"
 
-    messages = _message_posts(posts)
-    assert len(messages) == 1
-    assert messages[0]["messageText"] == "search trends for fitness shorts"
-    rows = minds._chat_rows()
-    assert rows[1].text.startswith(minds.SYSTEM_MARKER)
+    rows = llm._chat_rows()
+    assert rows[1].text.startswith(llm.SYSTEM_MARKER)
     assert "Researched 'fitness shorts':" in rows[1].text
 
 
@@ -310,16 +282,16 @@ def test_message_without_trigger_sends_untouched(
 ) -> None:
     _configure_env(monkeypatch)
     tavily_calls = _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    posts = _stub_chat(monkeypatch)
+    _stub_chat(monkeypatch)
 
     test_client, _ = client
     res = test_client.post("/api/v1/chat/messages", json={"message": "hello there"})
 
     assert res.status_code == 200
     assert tavily_calls == []
-    messages = _message_posts(posts)
-    assert len(messages) == 1
-    assert messages[0]["messageText"] == "hello there"
+    rows = llm._chat_rows()
+    assert rows[-2].role == "user"
+    assert rows[-2].text == "hello there"
 
 
 def test_inline_trigger_502_when_tavily_unconfigured(
@@ -421,8 +393,10 @@ def test_weekly_trend_research_creates_digest_todo_item(
     _configure_env(monkeypatch)
     _stub_tavily(monkeypatch, body=TAVILY_BODY)
     _stub_chat(monkeypatch)
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
+    monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
+    notifications: list[str] = []
+    monkeypatch.setattr(llm, "post_chat_notification", notifications.append)
     monkeypatch.setattr(
         trends,
         "_build_weekly_digest_body",
@@ -452,9 +426,11 @@ def test_weekly_trend_research_no_chat_notification(
     """Verify that weekly_trend_research does NOT post to chat."""
     _configure_env(monkeypatch)
     _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    posts = _stub_chat(monkeypatch)
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+    _stub_chat(monkeypatch)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
+    monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
+    notifications: list[str] = []
+    monkeypatch.setattr(llm, "post_chat_notification", notifications.append)
     monkeypatch.setattr(
         trends,
         "_build_weekly_digest_body",
@@ -468,9 +444,8 @@ def test_weekly_trend_research_no_chat_notification(
 
     trends.weekly_trend_research()
 
-    message_posts = [p for path, p in posts if path == "/v1/messaging/message"]
     # No chat notification should be posted for weekly digests
-    assert len(message_posts) == 0
+    assert notifications == []
 
 
 def test_weekly_trend_research_no_digest_when_paused(
@@ -479,8 +454,8 @@ def test_weekly_trend_research_no_digest_when_paused(
     _configure_env(monkeypatch)
     _stub_tavily(monkeypatch, body=TAVILY_BODY)
     _stub_chat(monkeypatch)
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"weekly_trends_paused": True})
-    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {"weekly_trends_paused": True})
+    monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
 
     created: list = []
 
@@ -504,8 +479,10 @@ def test_weekly_trend_research_no_digest_when_no_results(
     empty_body = {"query": "test", "results": []}
     _stub_tavily(monkeypatch, body=empty_body)
     _stub_chat(monkeypatch)
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
-    monkeypatch.setattr(minds, "update_memory", lambda *a, **kw: True)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
+    monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
+    notifications: list[str] = []
+    monkeypatch.setattr(llm, "post_chat_notification", notifications.append)
 
     created: list = []
 

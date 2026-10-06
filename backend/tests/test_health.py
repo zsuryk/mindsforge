@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import minds
+from app.services import llm
 
 
 @pytest.fixture
@@ -16,18 +16,18 @@ def test_health(client: TestClient) -> None:
     body = res.json()
     assert body["status"] == "ok"
     assert body["service"] == "mindsforge-backend"
-    assert body["minds"] in ("ok", "down", "unconfigured")
+    assert body["llm"] in ("ok", "down", "unconfigured")
     assert body["timestamp"]
 
 
 @pytest.mark.parametrize("status", ["ok", "down", "unconfigured"])
-def test_health_reports_minds_status(
+def test_health_reports_llm_status(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, status: str
 ) -> None:
-    monkeypatch.setattr(minds, "check_connection", lambda: status)
+    monkeypatch.setattr(llm, "check_connection", lambda: status)
     res = client.get("/api/v1/health")
     assert res.status_code == 200
-    assert res.json()["minds"] == status
+    assert res.json()["llm"] == status
 
 
 def test_health_cors_header(client: TestClient) -> None:

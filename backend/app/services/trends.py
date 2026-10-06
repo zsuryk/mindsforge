@@ -12,7 +12,7 @@ from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
 from app.models.todo import TodoItemType
-from app.services import activity, minds, todo
+from app.services import activity, llm, todo
 
 logger = logging.getLogger(__name__)
 
@@ -106,15 +106,12 @@ def research_trends(
     to the chat thread so the Mind answers grounded in live data, and returns
     the results for the UI chip.
 
-    Raises TrendSearchError (unconfigured/failing Tavily) or MindsError
-    (unconfigured/failing Mind chat) — fail-closed, never silent.
+    Raises TrendSearchError (unconfigured/failing Tavily) or LLMError
+    (unconfigured/failing LLM chat) — fail-closed, never silent.
     """
     results = search_trends(query)
-    agent_id = get_settings().MINDS_AGENT_ID
-    if not agent_id:
-        raise minds.MindsConfigError("MINDS_AGENT_ID is not configured")
-    _persist_trend_research(agent_id, query, platform, results, source=source)
-    minds.post_chat_notification(_notification_text(query, results))
+    _persist_trend_research(query, platform, results, source=source)
+    llm.post_chat_notification(_notification_text(query, results))
     activity.log(
         "trend-researched",
         f"Researched '{query}' — {len(results)} results",
@@ -124,14 +121,13 @@ def research_trends(
 
 
 def _persist_trend_research(
-    agent_id: str,
     query: str,
     platform: str | None,
     results: list[TrendResult],
     *,
     source: str = "manual",
 ) -> None:
-    memory = minds.fetch_memory(agent_id)
+    memory = llm.fetch_memory()
     history = memory.get(TREND_RESEARCH_KEY)
     if not isinstance(history, list):
         history = []
@@ -144,8 +140,8 @@ def _persist_trend_research(
             "researched_at": datetime.now(UTC).isoformat(),
         }
     )
-    minds.update_memory(
-        agent_id, TREND_RESEARCH_KEY, history[-TREND_RESEARCH_MAX_ENTRIES:]
+    llm.update_memory(
+        TREND_RESEARCH_KEY, history[-TREND_RESEARCH_MAX_ENTRIES:]
     )
 
 
@@ -318,11 +314,7 @@ def weekly_trend_research() -> dict[str, list[TrendResult]]:
 
     Returns a dict mapping platform name to its results.
     """
-    agent_id = get_settings().MINDS_AGENT_ID
-    if not agent_id:
-        raise minds.MindsConfigError("MINDS_AGENT_ID is not configured")
-
-    memory = minds.fetch_memory(agent_id)
+    memory = llm.fetch_memory()
     if memory.get(WEEKLY_TRENDS_PAUSED_KEY) is True:
         return {}
 
@@ -330,7 +322,7 @@ def weekly_trend_research() -> dict[str, list[TrendResult]]:
     for platform, query in WEEKLY_PLATFORM_QUERIES.items():
         try:
             results = search_trends(query)
-            _persist_trend_research(agent_id, query, platform, results, source="weekly")
+            _persist_trend_research(query, platform, results, source="weekly")
             all_results[platform] = results
         except TrendSearchError as exc:
             logger.warning("Weekly trend search failed for %s: %s", platform, exc)
@@ -354,19 +346,13 @@ def weekly_trend_research() -> dict[str, list[TrendResult]]:
             f"Weekly trends — {summary}",
         )
 
-    minds.update_memory(
-        agent_id, WEEKLY_TRENDS_LAST_RUN_KEY, datetime.now(UTC).isoformat()
-    )
+    llm.update_memory(WEEKLY_TRENDS_LAST_RUN_KEY, datetime.now(UTC).isoformat())
     return all_results
 
 
 def get_weekly_trends_status() -> dict[str, Any]:
     """Return the current status of the weekly trends scheduler."""
-    agent_id = get_settings().MINDS_AGENT_ID
-    if not agent_id:
-        return {"last_run": None, "paused": False, "next_run": None}
-
-    memory = minds.fetch_memory(agent_id)
+    memory = llm.fetch_memory()
     last_run_raw = memory.get(WEEKLY_TRENDS_LAST_RUN_KEY)
     paused = memory.get(WEEKLY_TRENDS_PAUSED_KEY) is True
 
@@ -391,8 +377,5 @@ def get_weekly_trends_status() -> dict[str, Any]:
 
 def toggle_weekly_trends(paused: bool) -> dict[str, Any]:
     """Enable or disable the weekly trends scheduler."""
-    agent_id = get_settings().MINDS_AGENT_ID
-    if not agent_id:
-        raise minds.MindsConfigError("MINDS_AGENT_ID is not configured")
-    minds.update_memory(agent_id, WEEKLY_TRENDS_PAUSED_KEY, paused)
+    llm.update_memory(WEEKLY_TRENDS_PAUSED_KEY, paused)
     return get_weekly_trends_status()

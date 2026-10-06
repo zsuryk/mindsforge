@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
-from app.services import llm, media, minds, transcription
+from app.services import llm, media, transcription
 from app.services.pipeline import run_pipeline
 from app.services.transcription import Transcription, TranscriptSegment
 
@@ -26,7 +26,7 @@ def _stub_minds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     get_settings.cache_clear()
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {"brand_voice": "bold"})
     monkeypatch.setattr(
         llm,
         "generate_clip_metadata",
@@ -358,9 +358,9 @@ def test_memory_fetch_failure_still_scores_without_context(
     _stub_pipeline_stages(monkeypatch, tmp_path)
     contexts: list[str | None] = []
     monkeypatch.setattr(
-        minds,
+        llm,
         "fetch_memory",
-        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("memory store down")),
+        lambda: (_ for _ in ()).throw(llm.LLMError("memory store down")),
     )
 
     def capturing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):

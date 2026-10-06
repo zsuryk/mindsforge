@@ -1,13 +1,17 @@
 import json
 import logging
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
+from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.db.base import get_session_factory
+from app.models.chat import ChatMessageRow
+from app.models.memory import MemoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -521,3 +525,328 @@ def generate_adaptation_features(
         lambda: _build_adaptation_fill_prompt(clip, platform, surface),
         parse,
     )
+
+
+
+SYSTEM_MARKER = "[MindsForge] "
+
+CHAT_THREAD_ID = "default"
+
+LOCAL_AGENT_ID = "default"
+
+CHAT_INIT_INSTRUCTION = (
+    f"{SYSTEM_MARKER}You are this creator's content strategist. Ground every "
+    "answer in this conversation and in the creator's memory. When the creator "
+    "states a brand rule — a preference about how their content should look, "
+    "sound, or be packaged — acknowledge it and remember it. When you score "
+    "clips or generate adaptations, explicitly reference what you remember "
+    "about this creator's preferences and past results. Reference specific "
+    "rules and experiments when they are relevant. You may use your "
+    "own Tavily connection to research trends when asked open-ended questions."
+)
+
+
+class ChatMessage(BaseModel):
+    """A single row of the creator chat thread.
+
+    Role mapping: senderType 0 rows are the Mind; senderType 1 rows prefixed
+    with the system marker are the app's own notifications (marker stripped);
+    any other senderType 1 row is the creator's message.
+    """
+
+    role: Literal["user", "mind", "system"]
+    text: str
+    fingerprint: str | None = None
+
+
+class ExperimentVerdict(BaseModel):
+    """Structured verdict returned by the Mind at experiment conclusion."""
+
+    winning_variant_id: str
+    reasoning: str
+
+    @field_validator("reasoning")
+    @classmethod
+    def _require_reasoning(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("reasoning must not be empty")
+        return value
+
+
+def _insert_chat_row(role: str, text: str) -> None:
+    with get_session_factory()() as session:
+        session.add(
+            ChatMessageRow(role=role, text=text, thread_id=CHAT_THREAD_ID)
+        )
+        session.commit()
+
+
+def _chat_rows(limit: int | None = None) -> list[ChatMessageRow]:
+    with get_session_factory()() as session:
+        stmt = (
+            select(ChatMessageRow)
+            .where(ChatMessageRow.thread_id == CHAT_THREAD_ID)
+            .order_by(ChatMessageRow.created_at.asc(), ChatMessageRow.id.asc())
+        )
+        rows = list(session.scalars(stmt).all())
+    return rows[-limit:] if limit is not None else rows
+
+
+def _ensure_chat_initialised() -> None:
+    """Insert the system-marked initialisation instruction when the local
+    chat thread is empty, so the Mind is primed before the creator's first
+    message — or before any background notification that lands first."""
+    if not _chat_rows(limit=1):
+        _insert_chat_row("system", CHAT_INIT_INSTRUCTION)
+
+
+def _chat_messages() -> list[dict[str, str]]:
+    """Render the stored thread as chat completion messages."""
+    roles = {"system": "system", "user": "user", "mind": "assistant"}
+    messages: list[dict[str, str]] = []
+    for row in _chat_rows():
+        text = row.text
+        if text.startswith(SYSTEM_MARKER):
+            text = text[len(SYSTEM_MARKER) :]
+        messages.append({"role": roles[row.role], "content": text})
+    return messages
+
+
+def send_chat_message(text: str) -> str:
+    """Send a creator message to the Mind and return its reply.
+
+    The local SQLite thread is the conversation: it is initialised with the
+    system instruction when empty, the creator message is stored, and the
+    whole thread (creator turns, Mind turns, and notifications) is replayed
+    as the prompt. The reply is stored as the next Mind turn.
+
+    Raises LLMError on any failure — fail-closed, no fallback text.
+    """
+    _headers()
+    _ensure_chat_initialised()
+    _insert_chat_row("user", text)
+    reply = _chat_completion(_chat_messages())
+    _insert_chat_row("mind", reply)
+    return reply
+
+
+def post_chat_notification(text: str) -> None:
+    """Store a system-marked notification in the local chat thread.
+
+    The message is prefixed with the system marker so the UI renders it as a
+    chip and the Mind reads it as an event in the thread (e.g. trend research
+    results it can answer grounded in). The thread is initialised first when
+    it is empty, mirroring ``send_chat_message``.
+    """
+    _ensure_chat_initialised()
+    _insert_chat_row("system", f"{SYSTEM_MARKER}{text}")
+
+
+def notify_mind(text: str) -> None:
+    """Tell the Mind about an outcome it did not witness, best-effort.
+
+    Stores ``text`` as a system-marked message in the local chat thread so
+    the outcome is recorded where the Mind's context is built from. Any
+    error — including an unconfigured builder — is logged and swallowed: a
+    notification must never fail an Experiment or Adaptation that already
+    succeeded (fire-and-forget by design, no reply waiting).
+    """
+    try:
+        post_chat_notification(text)
+    except Exception as exc:
+        logger.warning("Mind notification not delivered: %s", exc)
+
+
+def fetch_chat_history(limit: int = 50) -> list[ChatMessage]:
+    """Return the chat thread as role-annotated messages, oldest first."""
+    messages: list[ChatMessage] = []
+    for row in _chat_rows(limit=limit):
+        text = row.text
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if row.role == "system":
+            role: Literal["user", "mind", "system"] = "system"
+            if text.startswith(SYSTEM_MARKER):
+                text = text[len(SYSTEM_MARKER) :]
+        elif row.role == "mind":
+            role = "mind"
+        else:
+            role = "user"
+        messages.append(
+            ChatMessage(role=role, text=text, fingerprint=row.id)
+        )
+    return messages
+
+
+CHAT_CONTEXT_MAX_CHARS = 4000
+
+
+def build_chat_context() -> str | None:
+    """Render the local chat thread as a prompt fragment.
+
+    Filters to meaningful messages (creator, Mind, and system
+    notifications), renders them with role annotations, and caps the output
+    at ``CHAT_CONTEXT_MAX_CHARS`` characters so the prompt stays within
+    token budgets.
+
+    The system initialisation instruction is excluded — it is setup, not
+    memory. Returns ``None`` when the thread is empty (best-effort, callers
+    degrade gracefully).
+    """
+    rows = _chat_rows()
+    lines: list[str] = []
+    char_count = 0
+    for row in reversed(rows):
+        text = row.text
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if text == CHAT_INIT_INSTRUCTION:
+            continue
+        if row.role == "mind":
+            role_label = "Mind"
+            text_rendered = text
+        elif row.role == "system":
+            role_label = "[System]"
+            text_rendered = (
+                text[len(SYSTEM_MARKER) :]
+                if text.startswith(SYSTEM_MARKER)
+                else text
+            )
+        else:
+            role_label = "Creator"
+            text_rendered = text
+        line = f"{role_label}: {text_rendered}"
+        if char_count + len(line) + 1 > CHAT_CONTEXT_MAX_CHARS:
+            break
+        lines.append(line)
+        char_count += len(line) + 1
+    if not lines:
+        return None
+    lines.reverse()
+    return "\n".join(lines)
+
+
+def _build_winner_read_prompt(
+    platform: str,
+    variants: list[dict[str, Any]],
+    transcript: str,
+    chat_context: str | None,
+) -> str:
+    context_block = chat_context if chat_context else "none"
+    variant_lines = "\n".join(
+        f"- variant_id: {variant.get('variant_id')}, "
+        f"title: {variant.get('title', '')}, "
+        f"thumbnail: {variant.get('thumbnail_path') or 'none'}, "
+        f"views: {variant.get('views', 0)}, "
+        f"clicks: {variant.get('clicks', 0)}, "
+        f"ctr: {variant.get('ctr', 0.0)}%"
+        for variant in variants
+    )
+    return (
+        "I need your honest read on an A/B experiment. You are not fabricating "
+        "anything: study the variants and the clip transcript, then tell me "
+        "which variant won and why. A clear reasoning grounded in the data is "
+        "what matters.\n\n"
+        f"Platform: {platform}\n\n"
+        f"Clip transcript:\n{transcript}\n\n"
+        "Experiment variants (thumbnail is the rendered thumbnail file path "
+        "viewers saw for that variant):\n"
+        f"{variant_lines}\n\n"
+        "Creator conversation context (brand voice and past learnings):\n"
+        f"{context_block}\n\n"
+        "Give me your read in prose: which variant should win, why it "
+        "outperformed the others, and what the creator should reuse next time. "
+        "I will then ask you to convert it into a structured verdict."
+    )
+
+
+_EXPERIMENT_VERDICT_SCHEMA = (
+    "{\n"
+    '  "winning_variant_id": "the id of the winning variant from the list above",\n'
+    '  "reasoning": "2-3 sentences: why this variant won and what to reuse next time"\n'
+    "}"
+)
+
+
+def _build_winner_fill_prompt() -> str:
+    return (
+        "Here is the schema for the experiment verdict. Fill it in with your "
+        "read from your last message:\n"
+        f"{_EXPERIMENT_VERDICT_SCHEMA}\n\n"
+        "Rules:\n"
+        "- winning_variant_id must exactly match one of the variant_id values above.\n"
+        "- reasoning must be non-empty and grounded in the variant metrics and clip content.\n"
+        "- The reasoning doubles as the learned insight persisted to the creator's memory."
+    )
+
+
+def _parse_winner_verdict(message: str) -> ExperimentVerdict:
+    data = _parse_json_object(message, "experiment verdict")
+    try:
+        return ExperimentVerdict(**data)
+    except ValidationError as exc:
+        raise LLMError(f"Experiment verdict failed validation: {exc}") from exc
+
+
+def decide_experiment_winner(
+    platform: str,
+    variants: list[dict[str, Any]],
+    transcript: str,
+    *,
+    chat_context: str | None = None,
+) -> ExperimentVerdict:
+    """Ask the Mind to pick the winning variant of a concluded experiment.
+
+    Two-step flow mirrors clip scoring (see ``generate_clip_metadata``): a
+    prose read of the variants, then a schema-fill message converting that
+    read into the structured verdict.
+
+    Raises LLMError on any failure (missing configuration, HTTP errors,
+    unparseable verdicts, unknown winner ids, empty reasoning) so callers
+    fail the experiment closed instead of falling back to metrics.
+    """
+    read_prompt = _build_winner_read_prompt(platform, variants, transcript, chat_context)
+
+    def parse(message: str) -> ExperimentVerdict:
+        verdict = _parse_winner_verdict(message)
+        known_ids = {
+            str(variant.get("variant_id"))
+            for variant in variants
+            if variant.get("variant_id")
+        }
+        if not known_ids or verdict.winning_variant_id not in known_ids:
+            raise LLMError(
+                f"Experiment verdict picked unknown variant id "
+                f"{verdict.winning_variant_id!r}"
+            )
+        return verdict
+
+    return _read_then_fill(read_prompt, _build_winner_fill_prompt, parse)
+
+
+def fetch_memory() -> dict[str, Any]:
+    """Return the Mind's persistent context tree as a key/value dict.
+
+    The tree is persisted locally (SQLite) under the local agent id.
+    """
+    with get_session_factory()() as db:
+        rows = db.scalars(
+            select(MemoryEntry).where(MemoryEntry.agent_id == LOCAL_AGENT_ID)
+        ).all()
+        return {row.key: row.value for row in rows}
+
+
+def update_memory(key: str, value: Any) -> bool:
+    """Persist an insight key/value to the local memory tree."""
+    with get_session_factory()() as db:
+        entry = db.scalar(
+            select(MemoryEntry).where(
+                MemoryEntry.agent_id == LOCAL_AGENT_ID, MemoryEntry.key == key
+            )
+        )
+        if entry is None:
+            db.add(MemoryEntry(agent_id=LOCAL_AGENT_ID, key=key, value=value))
+        else:
+            entry.value = value
+        db.commit()
+    return True

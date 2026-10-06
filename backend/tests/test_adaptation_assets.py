@@ -12,7 +12,7 @@ from app.db.base import get_session_factory
 from app.models.adaptation import ClipAdaptation
 from app.models.clip import Clip
 from app.models.job import Job
-from app.services import llm, media, minds
+from app.services import llm, media
 from app.services.adaptation_assets import (
     render_adaptation_assets,
     write_chapters,

@@ -109,7 +109,7 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    from app.services import llm, media, minds, transcription
+    from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
     raw = tmp_path / "raw" / "video.mp4"
@@ -157,7 +157,7 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
             "x": ["Hot take: nobody says this out loud"],
         },
     )
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {"brand_voice": "bold"})
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {"brand_voice": "bold"})
     monkeypatch.setattr(llm, "generate_clip_metadata", lambda *args, **kwargs: scored_metadata)
 
     res = test_client.post(
@@ -218,7 +218,7 @@ def test_scoring_minds_error_fails_job_and_rolls_back_clips(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    from app.services import llm, media, minds, transcription
+    from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
     raw = tmp_path / "raw" / "video.mp4"
@@ -248,14 +248,14 @@ def test_scoring_minds_error_fails_job_and_rolls_back_clips(
         lambda source, dest, timestamp: dest.write_bytes(b"png bytes") or dest,
     )
     monkeypatch.setattr(
-        minds,
+        llm,
         "fetch_memory",
-        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+        lambda: (_ for _ in ()).throw(llm.LLMError("builder api down")),
     )
     monkeypatch.setattr(
         llm,
         "generate_clip_metadata",
-        lambda *args, **kwargs: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(llm.LLMError("builder api down")),
     )
 
     res = test_client.post(
@@ -386,7 +386,7 @@ def test_rerunning_pipeline_clears_stale_error_message(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    from app.services import llm, media, minds, transcription
+    from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
     raw = tmp_path / "raw" / "video.mp4"
@@ -400,7 +400,7 @@ def test_rerunning_pipeline_clears_stale_error_message(
         "extract_frame_at_timestamp",
         lambda source, dest, timestamp: dest.write_bytes(b"x") or dest,
     )
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
     monkeypatch.setattr(
         llm,
         "generate_clip_metadata",
@@ -458,7 +458,7 @@ def test_clip_returns_empty_latest_adaptations_when_none_exist(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    from app.services import llm, media, minds, transcription
+    from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
     raw = tmp_path / "raw" / "video.mp4"
@@ -480,7 +480,7 @@ def test_clip_returns_empty_latest_adaptations_when_none_exist(
             duration_seconds=2.0,
         ),
     )
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
     monkeypatch.setattr(
         llm,
         "generate_clip_metadata",
@@ -519,7 +519,7 @@ def test_clip_returns_latest_adaptations_when_exist(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    from app.services import llm, media, minds, transcription
+    from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
     raw = tmp_path / "raw" / "video.mp4"
@@ -541,7 +541,7 @@ def test_clip_returns_latest_adaptations_when_exist(
             duration_seconds=2.0,
         ),
     )
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: {})
+    monkeypatch.setattr(llm, "fetch_memory", lambda: {})
     monkeypatch.setattr(
         llm,
         "generate_clip_metadata",

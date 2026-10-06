@@ -8,7 +8,7 @@ from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
 from app.models.job import Job
-from app.services import ab_testing, minds
+from app.services import ab_testing, llm
 from app.services.pipeline import _score_clips
 
 
@@ -115,7 +115,7 @@ def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
     monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: None)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: None)
     monkeypatch.setattr(
         llm,
         "generate_clip_metadata",

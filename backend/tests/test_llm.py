@@ -547,3 +547,201 @@ def test_generate_adaptation_features_raises_on_empty_reply(
     monkeypatch.setattr(llm, "_chat_completion", lambda messages, **kwargs: "")
     with pytest.raises(llm.LLMError, match="no JSON object|empty reply"):
         llm.generate_adaptation_features(CLIP, "youtube", "SHORTS", SEGMENTS)
+
+
+# --- experiment verdicts ---
+
+
+def test_decide_experiment_winner_parses_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        llm,
+        "_chat_completion",
+        lambda messages, **kwargs: (
+            captured.update(prompt=messages[0]["content"])
+            or '{"winning_variant_id": "v1", "reasoning": "Hook A held viewers longer; reuse this formula."}'
+        ),
+    )
+
+    verdict = llm.decide_experiment_winner(
+        "youtube_shorts",
+        VARIANTS,
+        "the clip transcript",
+        chat_context='brand_voice: "bold"',
+    )
+
+    assert verdict.winning_variant_id == "v1"
+    assert "reuse this formula" in verdict.reasoning
+    assert "youtube_shorts" in captured["prompt"]
+    assert "the clip transcript" in captured["prompt"]
+    assert "v2" in captured["prompt"]
+    assert "brand_voice" in captured["prompt"]
+
+
+def test_decide_experiment_winner_strips_markdown_fences(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    monkeypatch.setattr(
+        llm,
+        "_chat_completion",
+        lambda messages, **kwargs: (
+            '```json\n{"winning_variant_id": "v2", '
+            '"reasoning": "debate-style hook won."}\n```'
+        ),
+    )
+    assert llm.decide_experiment_winner("x", VARIANTS, "t").winning_variant_id == "v2"
+
+
+def test_decide_experiment_winner_rejects_unknown_winner_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    monkeypatch.setattr(
+        llm,
+        "_chat_completion",
+        lambda messages, **kwargs: (
+            '{"winning_variant_id": "ghost", "reasoning": "it felt right"}'
+        ),
+    )
+    with pytest.raises(llm.LLMError, match="unknown variant id"):
+        llm.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
+def test_decide_experiment_winner_rejects_empty_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    monkeypatch.setattr(
+        llm,
+        "_chat_completion",
+        lambda messages, **kwargs: '{"winning_variant_id": "v1", "reasoning": "   "}',
+    )
+    with pytest.raises(llm.LLMError, match="failed validation"):
+        llm.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
+def test_decide_experiment_winner_raises_on_empty_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    monkeypatch.setattr(llm, "_chat_completion", lambda messages, **kwargs: "  ")
+    with pytest.raises(llm.LLMError, match="no JSON object|empty reply"):
+        llm.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+
+def test_decide_experiment_winner_two_step_flow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    call_count = 0
+
+    def fake_chat_completion(messages, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return (
+                "Looking at the three variants, variant v1 with its hook-driven "
+                "title clearly outperformed the others. The 5% CTR versus 2% "
+                "shows viewers responded to the stronger opening."
+            )
+        return '{"winning_variant_id": "v1", "reasoning": "Hook A held viewers longer; reuse this formula."}'
+
+    monkeypatch.setattr(llm, "_chat_completion", fake_chat_completion)
+
+    verdict = llm.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+    assert verdict.winning_variant_id == "v1"
+    assert "reuse this formula" in verdict.reasoning
+    assert call_count == 2
+
+
+def test_decide_experiment_winner_skips_fill_when_read_is_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    call_count = 0
+
+    def fake_chat_completion(messages, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return '{"winning_variant_id": "v2", "reasoning": "debate-style hook won."}'
+
+    monkeypatch.setattr(llm, "_chat_completion", fake_chat_completion)
+
+    verdict = llm.decide_experiment_winner("youtube_shorts", VARIANTS, "t")
+
+    assert verdict.winning_variant_id == "v2"
+    assert call_count == 1
+
+
+# --- memory store ---
+
+
+# --- local memory store ---
+
+
+def test_fetch_memory_returns_empty_tree_initially(
+    client: tuple[Any, Any],
+) -> None:
+    assert llm.fetch_memory() == {}
+
+
+def test_update_memory_persists_key_value(client: tuple[Any, Any]) -> None:
+    assert llm.update_memory("brand_voice", "bold") is True
+    assert llm.fetch_memory() == {"brand_voice": "bold"}
+
+
+def test_update_memory_overwrites_existing_key(client: tuple[Any, Any]) -> None:
+    llm.update_memory("k", 1)
+    llm.update_memory("k", 2)
+    assert llm.fetch_memory() == {"k": 2}
+
+
+def test_update_memory_stores_structured_values(client: tuple[Any, Any]) -> None:
+    llm.update_memory("ab_test_history", [{"experiment_id": "e1"}])
+    assert llm.fetch_memory() == {"ab_test_history": [{"experiment_id": "e1"}]}
+
+
+# --- messaging flow ---
+
+
+# --- chat notifications and context ---
+
+
+def test_notify_mind_persists_marked_system_row(
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+
+    llm.notify_mind("Experiment concluded on clip 'My clip'.")
+
+    rows = llm._chat_rows()
+    assert len(rows) == 2
+    assert rows[0].role == "system"
+    assert rows[0].text == llm.CHAT_INIT_INSTRUCTION
+    assert rows[1].role == "system"
+    assert rows[1].text == (
+        f"{llm.SYSTEM_MARKER}Experiment concluded on clip 'My clip'."
+    )
+
+
+def test_notify_mind_swallows_store_failure(
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    monkeypatch.setattr(
+        llm,
+        "_insert_chat_row",
+        lambda role, text: (_ for _ in ()).throw(RuntimeError("disk full")),
+    )
+    captured: list[str] = []
+    monkeypatch.setattr(
+        llm.logger, "warning", lambda message, *args: captured.append(message)
+    )
+
+    assert llm.notify_mind("hello") is None
+    assert any("Mind notification not delivered" in message for message in captured)

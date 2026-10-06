@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchHealth, type MindsStatus } from "@/lib/api";
+import { fetchHealth, type LlmStatus } from "@/lib/api";
 
 type BackendState = "online" | "offline" | "checking";
-type MindState = MindsStatus | "checking";
+type MindState = LlmStatus | "checking";
 
 const BACKEND_STATE_CONFIG: Record<BackendState, { dotClass: string; label: string }> = {
   online: { dotClass: "bg-emerald-400", label: "Backend online" },
@@ -31,7 +31,7 @@ export function SystemStatus() {
         const health = await fetchHealth();
         if (!cancelled) {
           setBackendState(health.status === "ok" ? "online" : "offline");
-          setMindState(health.minds);
+          setMindState(health.llm);
         }
       } catch {
         if (!cancelled) {
@@ -54,7 +54,7 @@ export function SystemStatus() {
   return (
     <div className="flex items-center gap-2">
       <Pill dotClass={backend.dotClass} label={backend.label} title="Live status from the backend health endpoint" />
-      <Pill dotClass={mind.dotClass} label={mind.label} title="Live status of the Mind's Builder API" />
+      <Pill dotClass={mind.dotClass} label={mind.label} title="Live status of the configured LLM backend" />
     </div>
   );
 }

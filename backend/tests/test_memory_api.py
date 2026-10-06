@@ -3,144 +3,69 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.services import minds
+from app.services import llm
 
 
-@pytest.fixture()
-def _minds_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
-
-
-def test_get_memory_returns_agent_id_and_tree(
+def test_get_memory_returns_local_agent_id_and_tree(
     client: tuple[TestClient, Path],
-    _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, _ = client
     memory = {"brand_voice": "bold", "historical_insights": {"tiktok": ["fast pacing"]}}
-    monkeypatch.setattr(minds, "fetch_memory", lambda agent_id: memory)
+    monkeypatch.setattr(llm, "fetch_memory", lambda: memory)
 
     res = test_client.get("/api/v1/agent/memory")
 
     assert res.status_code == 200
-    assert res.json() == {"agent_id": "agent-1", "memory": memory}
+    assert res.json() == {"agent_id": llm.LOCAL_AGENT_ID, "memory": memory}
 
 
-def test_get_memory_passes_configured_agent_id(
+def test_get_memory_returns_clear_error_when_store_fails(
     client: tuple[TestClient, Path],
-    _minds_env: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    test_client, _ = client
-    captured: dict[str, str] = {}
-
-    def fake_fetch(agent_id: str) -> dict:
-        captured["agent_id"] = agent_id
-        return {}
-
-    monkeypatch.setattr(minds, "fetch_memory", fake_fetch)
-
-    res = test_client.get("/api/v1/agent/memory")
-
-    assert res.status_code == 200
-    assert captured["agent_id"] == "agent-1"
-
-
-def test_get_memory_returns_clear_error_when_api_down(
-    client: tuple[TestClient, Path],
-    _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, _ = client
     monkeypatch.setattr(
-        minds,
+        llm,
         "fetch_memory",
-        lambda agent_id: (_ for _ in ()).throw(minds.MindsError("builder api down")),
+        lambda: (_ for _ in ()).throw(llm.LLMError("memory store down")),
     )
 
     res = test_client.get("/api/v1/agent/memory")
 
     assert res.status_code == 502
-    assert res.json()["detail"] == "builder api down"
+    assert res.json()["detail"] == "memory store down"
 
 
-def test_get_memory_returns_clear_error_when_key_missing(
+def test_get_memory_returns_clear_error_when_unconfigured(
     client: tuple[TestClient, Path],
-    _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, _ = client
     monkeypatch.setattr(
-        minds,
+        llm,
         "fetch_memory",
-        lambda agent_id: (_ for _ in ()).throw(
-            minds.MindsConfigError("MINDS_BUILDER_API_KEY is not configured")
+        lambda: (_ for _ in ()).throw(
+            llm.LLMConfigError("OPENAI_BASE_URL is not configured")
         ),
     )
 
     res = test_client.get("/api/v1/agent/memory")
 
     assert res.status_code == 503
-    assert "MINDS_BUILDER_API_KEY" in res.json()["detail"]
+    assert "OPENAI_BASE_URL" in res.json()["detail"]
 
 
-def test_get_memory_returns_503_when_agent_id_not_configured(
+def test_update_memory_persists_key_value_and_returns_success(
     client: tuple[TestClient, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    test_client, _ = client
-
-    res = test_client.get("/api/v1/agent/memory")
-
-    assert res.status_code == 503
-    assert "MINDS_AGENT_ID" in res.json()["detail"]
-
-
-def test_update_memory_returns_503_when_agent_id_not_configured(
-    client: tuple[TestClient, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    test_client, _ = client
-
-    res = test_client.post(
-        "/api/v1/agent/memory/update",
-        json={"key": "k", "value": "v"},
-    )
-
-    assert res.status_code == 503
-    assert "MINDS_AGENT_ID" in res.json()["detail"]
-
-
-def test_update_memory_posts_key_value_and_returns_success(
-    client: tuple[TestClient, Path],
-    _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, _ = client
     captured: dict[str, object] = {}
     monkeypatch.setattr(
-        minds,
+        llm,
         "update_memory",
-        lambda agent_id, key, value: captured.update(agent_id=agent_id, key=key, value=value)
-        or True,
+        lambda key, value: captured.update(key=key, value=value) or True,
     )
 
     res = test_client.post(
@@ -150,20 +75,15 @@ def test_update_memory_posts_key_value_and_returns_success(
 
     assert res.status_code == 200
     assert res.json() == {"success": True}
-    assert captured == {
-        "agent_id": "agent-1",
-        "key": "learned_insight",
-        "value": {"ctr": 0.03},
-    }
+    assert captured == {"key": "learned_insight", "value": {"ctr": 0.03}}
 
 
-def test_update_memory_reports_success_false_when_mind_rejects(
+def test_update_memory_reports_success_false_when_store_rejects(
     client: tuple[TestClient, Path],
-    _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, _ = client
-    monkeypatch.setattr(minds, "update_memory", lambda agent_id, key, value: False)
+    monkeypatch.setattr(llm, "update_memory", lambda key, value: False)
 
     res = test_client.post(
         "/api/v1/agent/memory/update",
@@ -174,18 +94,15 @@ def test_update_memory_reports_success_false_when_mind_rejects(
     assert res.json() == {"success": False}
 
 
-def test_update_memory_returns_clear_error_when_api_down(
+def test_update_memory_returns_clear_error_when_store_fails(
     client: tuple[TestClient, Path],
-    _minds_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, _ = client
     monkeypatch.setattr(
-        minds,
+        llm,
         "update_memory",
-        lambda agent_id, key, value: (_ for _ in ()).throw(
-            minds.MindsError("request failed: timeout")
-        ),
+        lambda key, value: (_ for _ in ()).throw(llm.LLMError("memory store down")),
     )
 
     res = test_client.post(
@@ -194,15 +111,28 @@ def test_update_memory_returns_clear_error_when_api_down(
     )
 
     assert res.status_code == 502
-    assert res.json()["detail"] == "request failed: timeout"
+    assert res.json()["detail"] == "memory store down"
 
 
 def test_update_memory_rejects_missing_key(
     client: tuple[TestClient, Path],
-    _minds_env: None,
 ) -> None:
     test_client, _ = client
 
     res = test_client.post("/api/v1/agent/memory/update", json={"value": "v"})
 
     assert res.status_code == 422
+
+
+def test_memory_round_trips_through_the_local_store(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, _ = client
+
+    test_client.post(
+        "/api/v1/agent/memory/update",
+        json={"key": "brand_voice", "value": "bold"},
+    )
+
+    memory = test_client.get("/api/v1/agent/memory").json()["memory"]
+    assert memory == {"brand_voice": "bold"}

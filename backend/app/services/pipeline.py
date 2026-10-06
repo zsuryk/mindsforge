@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.clip import Clip
 from app.models.job import Job, JobStatus
-from app.services import activity, llm, media, minds, todo, transcription
+from app.services import activity, llm, media, todo, transcription
 from app.services import clips as clips_service
 from app.services.transcription import TranscriptSegment
 
@@ -78,7 +78,7 @@ def _score_clips(db: Session, job: Job) -> None:
     if not clips:
         return
 
-    chat_context = minds.build_chat_context()
+    chat_context = llm.build_chat_context()
 
     for clip in clips:
         metadata = llm.generate_clip_metadata(

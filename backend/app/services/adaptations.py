@@ -2,11 +2,10 @@ import logging
 from dataclasses import asdict
 from uuid import uuid4
 
-from app.core.config import get_settings
 from app.db.base import get_session_factory
 from app.models.adaptation import AdaptationStatus, ClipAdaptation
 from app.models.todo import TodoItemType
-from app.services import activity, llm, minds, todo as todo_module
+from app.services import activity, llm, todo as todo_module
 from app.services.adaptation_assets import render_adaptation_assets
 from app.services.transcription import TranscriptSegment
 
@@ -56,7 +55,7 @@ def _chat_context() -> str | None:
     as system notifications in the chat thread, so they appear in the
     conversation context via ``build_chat_context()``.
     """
-    return minds.build_chat_context()
+    return llm.build_chat_context()
 
 
 def _persist_adaptation_history(adaptation: ClipAdaptation) -> None:
@@ -65,9 +64,6 @@ def _persist_adaptation_history(adaptation: ClipAdaptation) -> None:
     Best-effort (mirrors `ab_test_history`): a memory write failure leaves
     the adaptation READY with features stored locally only.
     """
-    settings = get_settings()
-    if not settings.MINDS_BUILDER_API_KEY or not settings.MINDS_AGENT_ID:
-        return
     record = {
         "adaptation_id": adaptation.id,
         "clip_id": adaptation.clip_id,
@@ -77,14 +73,14 @@ def _persist_adaptation_history(adaptation: ClipAdaptation) -> None:
         "generated_at": adaptation.updated_at.isoformat() if adaptation.updated_at else None,
     }
     try:
-        memory = minds.fetch_memory(settings.MINDS_AGENT_ID)
+        memory = llm.fetch_memory()
         history = memory.get("adaptation_history")
         if not isinstance(history, list):
             history = []
         history.append(record)
-        minds.update_memory(settings.MINDS_AGENT_ID, "adaptation_history", history)
+        llm.update_memory("adaptation_history", history)
         logger.info(
-            "Adaptation %s: history written to Minds memory", adaptation.id
+            "Adaptation %s: history written to Mind memory", adaptation.id
         )
     except llm.LLMError as exc:
         logger.warning(
@@ -99,7 +95,7 @@ def generate_adaptation(adaptation_id: str) -> None:
 
     Transitions PENDING → GENERATING → READY (manifest accepted, memory
     history appended) or → FAILED with a stored error message on any
-    Minds failure or unexpected error.
+    LLM failure or unexpected error.
     """
     with get_session_factory()() as db:
         adaptation = db.get(ClipAdaptation, adaptation_id)

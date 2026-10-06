@@ -10,7 +10,7 @@ from app.models.adaptation import ClipAdaptation
 from app.models.clip import Clip
 from app.models.job import Job
 from app.models.todo import TodoItemType
-from app.services import adaptations, llm, minds, todo as todo_module
+from app.services import adaptations, llm, todo as todo_module
 
 YOUTUBE_LONG_FORM_FEATURES = {
     "chapters": [{"title": "The hook", "timestamp": 2.0}],
@@ -201,7 +201,7 @@ def test_minds_failure_fails_adaptation_with_error_message(
     test_client, tmp_path = client
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
-    stub_features(monkeypatch, error=minds.MindsError("builder api down"))
+    stub_features(monkeypatch, error=llm.LLMError("builder api down"))
 
     res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
 
@@ -221,7 +221,7 @@ def test_failed_adaptation_can_be_retried(
     stub_rendering(monkeypatch)
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
-    stub_features(monkeypatch, error=minds.MindsError("builder api down"))
+    stub_features(monkeypatch, error=llm.LLMError("builder api down"))
 
     first = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
     adaptation_id = first.json()["id"]
