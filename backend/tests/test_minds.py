@@ -922,33 +922,21 @@ def test_network_errors_are_wrapped_as_minds_errors(
         minds._post("/v1/messaging/message", {})
 
 
-def test_notify_mind_posts_marked_message_to_chat_alias(
-    monkeypatch: pytest.MonkeyPatch,
+def test_notify_mind_persists_marked_system_row(
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    posts: list[tuple[str, dict[str, Any]]] = []
-
-    def fake_post(path, payload):
-        posts.append((path, payload))
-        return FakeResponse({}, 200)
-
-    def fake_get(path, params=None):
-        if params and params.get("limit") == 1:
-            return FakeResponse([{"senderType": 1, "messageText": "old row"}], 200)
-        return FakeResponse([], 200)
-
-    monkeypatch.setattr(minds, "_post", fake_post)
-    monkeypatch.setattr(minds, "_get", fake_get)
 
     minds.notify_mind("Experiment concluded on clip 'My clip'.")
 
-    messages = [payload for path, payload in posts if path == "/v1/messaging/message"]
-    assert len(messages) == 1
-    assert messages[0]["alias"] == minds.CHAT_ALIAS
-    assert messages[0]["messageText"] == (
+    rows = minds._chat_rows()
+    assert len(rows) == 2
+    assert rows[0].role == "system"
+    assert rows[0].text == minds.CHAT_INIT_INSTRUCTION
+    assert rows[1].role == "system"
+    assert rows[1].text == (
         f"{minds.SYSTEM_MARKER}Experiment concluded on clip 'My clip'."
     )
-    assert all(payload.get("alias") == minds.CHAT_ALIAS for _, payload in posts)
 
 
 def test_notify_mind_swallows_unconfigured_minds(
@@ -989,33 +977,20 @@ def test_notify_mind_swallows_message_send_failure(
 
 
 def test_build_chat_context_returns_none_on_empty_history(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds,
-        "_history_rows",
-        lambda alias, limit=50: [],
-    )
     assert minds.build_chat_context() is None
 
 
 def test_build_chat_context_renders_role_annotations(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds,
-        "_history_rows",
-        lambda alias, limit=50: [
-            {"senderType": 1, "messageText": "Hello Mind!"},
-            {"senderType": 0, "messageText": "Hi creator!"},
-            {
-                "senderType": 1,
-                "messageText": f"{minds.SYSTEM_MARKER}Trend results here",
-            },
-        ],
-    )
+    minds._insert_chat_row("user", "Hello Mind!")
+    minds._insert_chat_row("mind", "Hi creator!")
+    minds._insert_chat_row("system", f"{minds.SYSTEM_MARKER}Trend results here")
+
     context = minds.build_chat_context()
     assert context is not None
     assert "Creator: Hello Mind!" in context
@@ -1024,17 +999,12 @@ def test_build_chat_context_renders_role_annotations(
 
 
 def test_build_chat_context_excludes_init_instruction(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds,
-        "_history_rows",
-        lambda alias, limit=50: [
-            {"senderType": 1, "messageText": minds.CHAT_INIT_INSTRUCTION},
-            {"senderType": 1, "messageText": "Actual message"},
-        ],
-    )
+    minds._insert_chat_row("system", minds.CHAT_INIT_INSTRUCTION)
+    minds._insert_chat_row("user", "Actual message")
+
     context = minds.build_chat_context()
     assert context is not None
     assert minds.CHAT_INIT_INSTRUCTION not in context
@@ -1042,62 +1012,40 @@ def test_build_chat_context_excludes_init_instruction(
 
 
 def test_build_chat_context_respects_character_limit(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
     long_message = "x" * 500
-    rows = [
-        {"senderType": 1, "messageText": f"Message {i}: {long_message}"}
-        for i in range(20)
-    ]
-    monkeypatch.setattr(minds, "_history_rows", lambda alias, limit=50: rows)
+    for i in range(20):
+        minds._insert_chat_row("user", f"Message {i}: {long_message}")
     context = minds.build_chat_context()
     assert context is not None
     assert len(context) <= minds.CHAT_CONTEXT_MAX_CHARS
 
 
 def test_build_chat_context_preserves_newest_messages_when_over_limit(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the character limit is hit, the oldest messages are truncated but
     the newest messages (last in context) are preserved."""
     _configure_minds(monkeypatch)
-    rows = [
-        {"senderType": 1, "messageText": "First message"},
-        {"senderType": 1, "messageText": "x" * 2000},
-        {"senderType": 1, "messageText": "y" * 2000},
-    ]
-    monkeypatch.setattr(minds, "_history_rows", lambda alias, limit=50: rows)
+    minds._insert_chat_row("user", "First message")
+    minds._insert_chat_row("user", "x" * 2000)
+    minds._insert_chat_row("user", "y" * 2000)
+
     context = minds.build_chat_context()
     assert context is not None
     assert "Creator: y" in context
 
 
 def test_build_chat_context_skips_empty_messages(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds,
-        "_history_rows",
-        lambda alias, limit=50: [
-            {"senderType": 1, "messageText": ""},
-            {"senderType": 1, "messageText": "   "},
-            {"senderType": 0, "messageText": "Valid reply"},
-        ],
-    )
+    minds._insert_chat_row("user", "")
+    minds._insert_chat_row("user", "   ")
+    minds._insert_chat_row("mind", "Valid reply")
+
     context = minds.build_chat_context()
     assert context is not None
     assert context == "Mind: Valid reply"
-
-
-def test_build_chat_context_returns_none_on_minds_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_minds(monkeypatch)
-    monkeypatch.setattr(
-        minds,
-        "_history_rows",
-        lambda alias, limit=50: (_ for _ in ()).throw(minds.MindsError("boom")),
-    )
-    assert minds.build_chat_context() is None

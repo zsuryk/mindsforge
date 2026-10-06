@@ -117,3 +117,36 @@ def test_0006_adds_ab_data_source_column_with_default(
 
     columns = {c["name"] for c in inspect(get_engine()).get_columns("ab_experiments")}
     assert "data_source" not in columns
+
+
+def test_0009_creates_chat_messages_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "chat-messages.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    alembic_config = Config(str(BACKEND_DIR / "alembic.ini"))
+    alembic_config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    command.upgrade(alembic_config, "b3c4d5e6f7a8")
+
+    command.upgrade(alembic_config, "head")
+
+    from app.db.base import get_engine, get_session_factory
+
+    get_engine.cache_clear()
+    columns = {c["name"] for c in inspect(get_engine()).get_columns("chat_messages")}
+    assert columns == {"id", "role", "text", "thread_id", "created_at"}
+    with get_session_factory()() as db:
+        db.execute(
+            text(
+                "INSERT INTO chat_messages (id, role, text, thread_id, created_at) "
+                "VALUES ('m1', 'user', 'hello', 'default', datetime('now'))"
+            )
+        )
+        db.commit()
+        row = db.execute(text("SELECT role, text FROM chat_messages")).first()
+        assert row == ("user", "hello")

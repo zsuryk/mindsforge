@@ -213,18 +213,18 @@ def test_api_chat_trends_researches_persists_and_notifies(
     assert entry["results"][0]["title"] == "Best Fitness Shorts"
     assert entry["researched_at"]
 
-    messages = _message_posts(posts)
-    notification = messages[-1]
-    assert notification["alias"] == minds.CHAT_ALIAS
-    assert notification["messageText"].startswith(minds.SYSTEM_MARKER)
-    assert "Researched 'fitness shorts':" in notification["messageText"]
+    rows = minds._chat_rows()
+    notification = rows[-1]
+    assert notification.role == "system"
+    assert notification.text.startswith(minds.SYSTEM_MARKER)
+    assert "Researched 'fitness shorts':" in notification.text
     assert (
         "1. Best Fitness Shorts — https://example.com/fitness"
-        in notification["messageText"]
+        in notification.text
     )
-    assert "2. Shorts That Last" in notification["messageText"]
-    assert "3. Trend Report" in notification["messageText"]
-    assert "Fourth Hit" not in notification["messageText"]
+    assert "2. Shorts That Last" in notification.text
+    assert "3. Trend Report" in notification.text
+    assert "Fourth Hit" not in notification.text
 
 
 def test_research_trends_bounds_memory_to_last_10_entries(
@@ -296,11 +296,11 @@ def test_inline_trigger_researches_before_posting_user_message(
     assert tavily_calls[0]["json"]["query"] == "fitness shorts"
 
     messages = _message_posts(posts)
-    assert len(messages) == 3
-    assert messages[1]["messageText"].startswith(minds.SYSTEM_MARKER)
-    assert "Researched 'fitness shorts':" in messages[1]["messageText"]
-    # The user's message is posted untouched, after the notification.
-    assert messages[2]["messageText"] == "search trends for fitness shorts"
+    assert len(messages) == 1
+    assert messages[0]["messageText"] == "search trends for fitness shorts"
+    rows = minds._chat_rows()
+    assert rows[1].text.startswith(minds.SYSTEM_MARKER)
+    assert "Researched 'fitness shorts':" in rows[1].text
 
 
 def test_message_without_trigger_sends_untouched(
@@ -316,7 +316,8 @@ def test_message_without_trigger_sends_untouched(
     assert res.status_code == 200
     assert tavily_calls == []
     messages = _message_posts(posts)
-    assert messages[-1]["messageText"] == "hello there"
+    assert len(messages) == 1
+    assert messages[0]["messageText"] == "hello there"
 
 
 def test_inline_trigger_502_when_tavily_unconfigured(

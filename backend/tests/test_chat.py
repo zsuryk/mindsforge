@@ -40,7 +40,7 @@ def _message_posts(posts: list[tuple[str, dict[str, Any]]]) -> list[dict[str, An
 
 
 def test_send_chat_message_returns_reply_on_chat_alias(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
     posts: list[tuple[str, dict[str, Any]]] = []
@@ -68,14 +68,12 @@ def test_send_chat_message_returns_reply_on_chat_alias(
     )
 
 
-def test_send_chat_message_posts_init_instruction_when_conversation_empty(
-    monkeypatch: pytest.MonkeyPatch,
+def test_send_chat_message_persists_init_user_and_reply_rows(
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    posts: list[tuple[str, dict[str, Any]]] = []
 
     def fake_post(path, payload):
-        posts.append((path, payload))
         return FakeResponse({}, 200)
 
     def fake_get(path, params=None):
@@ -88,21 +86,20 @@ def test_send_chat_message_posts_init_instruction_when_conversation_empty(
 
     minds.send_chat_message("first message")
 
-    messages = _message_posts(posts)
-    assert len(messages) == 2
-    assert messages[0]["messageText"] == minds.CHAT_INIT_INSTRUCTION
-    assert messages[0]["messageText"].startswith(minds.SYSTEM_MARKER)
-    assert messages[1]["messageText"] == "first message"
+    history = minds.fetch_chat_history()
+    assert [m.role for m in history] == ["system", "user", "mind"]
+    assert history[0].text == minds.CHAT_INIT_INSTRUCTION[len(minds.SYSTEM_MARKER):]
+    assert history[1].text == "first message"
+    assert history[2].text == "reply"
 
 
 def test_send_chat_message_skips_instruction_when_conversation_nonempty(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    posts: list[tuple[str, dict[str, Any]]] = []
+    minds._insert_chat_row("user", "old row")
 
     def fake_post(path, payload):
-        posts.append((path, payload))
         return FakeResponse({}, 200)
 
     def fake_get(path, params=None):
@@ -115,12 +112,12 @@ def test_send_chat_message_skips_instruction_when_conversation_nonempty(
 
     minds.send_chat_message("next message")
 
-    messages = _message_posts(posts)
-    assert [message["messageText"] for message in messages] == ["next message"]
+    texts = [m.text for m in minds.fetch_chat_history()]
+    assert texts == ["old row", "next message", "reply"]
 
 
 def test_send_chat_message_uses_chat_timeout_not_scoring_timeout(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Chat must fail fast: the deadline uses CHAT_REPLY_TIMEOUT_SECONDS, not
     the generous scoring timeout. If the timeout were wrongly wired to
@@ -154,7 +151,7 @@ def test_send_chat_message_raises_when_unconfigured(
 
 
 def test_send_chat_message_never_invokes_groq_brand_rule_extraction(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
 
@@ -177,7 +174,7 @@ def test_send_chat_message_never_invokes_groq_brand_rule_extraction(
 
 
 def test_send_chat_message_never_exposes_groq_client(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
 
@@ -204,56 +201,28 @@ def test_send_chat_message_never_exposes_groq_client(
 
 
 def test_fetch_chat_history_maps_roles_and_strips_marker(
-    monkeypatch: pytest.MonkeyPatch,
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    rows = [
-        {"senderType": 0, "messageText": "Mind says", "fingerprint": "0002_x"},
-        {
-            "senderType": 1,
-            "messageText": "[MindsForge] Experiment concluded",
-            "fingerprint": "0003_y",
-        },
-        {"senderType": 1, "messageText": "creator message", "fingerprint": "0001_z"},
-    ]
-    monkeypatch.setattr(minds, "_get", lambda path, params=None: FakeResponse(rows, 200))
+    minds._insert_chat_row("mind", "Mind says")
+    minds._insert_chat_row("system", "[MindsForge] Experiment concluded")
+    minds._insert_chat_row("user", "creator message")
 
     messages = minds.fetch_chat_history()
 
-    # Newest-first rows are returned oldest-first for a natural thread.
-    assert [message.role for message in messages] == ["user", "mind", "system"]
-    assert messages[0].text == "creator message"
-    assert messages[1].text == "Mind says"
-    assert messages[2].text == "Experiment concluded"
-    assert messages[2].fingerprint == "0003_y"
+    assert [message.role for message in messages] == ["mind", "system", "user"]
+    assert messages[0].text == "Mind says"
+    assert messages[1].text == "Experiment concluded"
+    assert messages[2].text == "creator message"
+    assert messages[2].fingerprint
 
 
-def test_fetch_chat_history_skips_unmarked_sender_type_1_as_user(
-    monkeypatch: pytest.MonkeyPatch,
+def test_fetch_chat_history_skips_empty_messages(
+    client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_minds(monkeypatch)
-    rows = [
-        {"senderType": 1, "messageText": "a follow-up from the creator"},
-        {"senderType": 1, "messageText": "[MindsForge] tagged"},
-    ]
-    monkeypatch.setattr(minds, "_get", lambda path, params=None: FakeResponse(rows, 200))
-
-    messages = minds.fetch_chat_history()
-
-    assert [message.role for message in messages] == ["user", "system"]
-    assert messages[0].text == "a follow-up from the creator"
-    assert messages[1].text == "tagged"
-
-
-def test_fetch_chat_history_skips_rows_without_text(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_minds(monkeypatch)
-    rows = [
-        {"senderType": 0, "messageText": ""},
-        {"senderType": 1, "messageText": "hello", "fingerprint": "0001_a"},
-    ]
-    monkeypatch.setattr(minds, "_get", lambda path, params=None: FakeResponse(rows, 200))
+    minds._insert_chat_row("mind", "")
+    minds._insert_chat_row("user", "hello")
 
     assert [message.text for message in minds.fetch_chat_history()] == ["hello"]
 
@@ -366,11 +335,8 @@ def test_api_history_returns_thread(
     client: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _configure_minds(monkeypatch)
-    rows = [
-        {"senderType": 0, "messageText": "mind reply", "fingerprint": "0002_x"},
-        {"senderType": 1, "messageText": "creator msg", "fingerprint": "0001_y"},
-    ]
-    monkeypatch.setattr(minds, "_get", lambda path, params=None: FakeResponse(rows, 200))
+    minds._insert_chat_row("user", "creator msg")
+    minds._insert_chat_row("mind", "mind reply")
 
     test_client, _ = client
     response = test_client.get("/api/v1/chat/history")

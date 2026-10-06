@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.db.base import get_session_factory
+from app.models.chat import ChatMessageRow
 from app.models.memory import MemoryEntry
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ CHAT_REPLY_TIMEOUT_SECONDS = 180.0
 # reads them as normal content; the UI renders them as system chips and strips
 # the prefix.
 SYSTEM_MARKER = "[MindsForge] "
+
+CHAT_THREAD_ID = "default"
 
 CHAT_INIT_INSTRUCTION = (
     f"{SYSTEM_MARKER}You are this creator's content strategist. Ground every "
@@ -437,116 +440,105 @@ def _message_mind(
         time.sleep(MESSAGE_REPLY_POLL_INTERVAL_SECONDS)
 
 
-def _ensure_chat_initialised() -> None:
-    """Post the system-marked initialisation instruction when the chat
-    conversation is empty, so the Mind is primed before the creator's first
-    message — or before any background notification that lands first."""
-    _ensure_conversation(_agent_id(), CHAT_ALIAS)
-    if not _history_rows(CHAT_ALIAS, limit=1):
-        response = _post(
-            "/v1/messaging/message",
-            {"alias": CHAT_ALIAS, "messageText": CHAT_INIT_INSTRUCTION},
+def _insert_chat_row(role: str, text: str) -> None:
+    with get_session_factory()() as session:
+        session.add(
+            ChatMessageRow(role=role, text=text, thread_id=CHAT_THREAD_ID)
         )
-        if response.status_code != 200:
-            raise MindsError(
-                "Initialisation message send failed with "
-                f"status {response.status_code}"
-            )
+        session.commit()
+
+
+def _chat_rows(limit: int | None = None) -> list[ChatMessageRow]:
+    with get_session_factory()() as session:
+        stmt = (
+            select(ChatMessageRow)
+            .where(ChatMessageRow.thread_id == CHAT_THREAD_ID)
+            .order_by(ChatMessageRow.created_at.asc(), ChatMessageRow.id.asc())
+        )
+        rows = list(session.scalars(stmt).all())
+    return rows[-limit:] if limit is not None else rows
+
+
+def _ensure_chat_initialised() -> None:
+    """Insert the system-marked initialisation instruction when the local
+    chat thread is empty, so the Mind is primed before the creator's first
+    message — or before any background notification that lands first."""
+    if not _chat_rows(limit=1):
+        _insert_chat_row("system", CHAT_INIT_INSTRUCTION)
 
 
 def send_chat_message(text: str) -> str:
     """Send a creator message to the Mind on the dedicated chat conversation.
 
     Uses the ``mindsforge-chat`` alias so chat traffic never mixes with the
-    structured scoring/adaptation conversations. When the conversation is
-    empty, a system-marked initialisation instruction is posted first so the
-    Mind is primed before the creator's first message.
+    structured scoring/adaptation conversations. When the thread is empty, a
+    system-marked initialisation instruction is stored first so the Mind is
+    primed before the creator's first message.
 
-    Reply attribution is best-effort: the first Mind reply newer than the
-    message we sent is returned, so a Mind acknowledgment of the initialisation
-    instruction (or of a background notification) may be returned instead of
-    the true answer. The UI polls the full history, so the real reply always
-    surfaces in the thread (documented, accepted edge case).
+    The local SQLite thread is the record: the creator message is persisted,
+    the Mind's reply is fetched from the existing remote call (for now), and
+    the reply is persisted as well.
 
     Raises MindsError on any failure (missing credentials, HTTP errors, or a
     reply that exceeds the chat timeout) — fail-closed, no fallback text.
     """
-    agent_id = _agent_id()
+    _agent_id()
     _ensure_chat_initialised()
-    return _message_mind(
-        agent_id, text, alias=CHAT_ALIAS, timeout_seconds=CHAT_REPLY_TIMEOUT_SECONDS
+    _insert_chat_row("user", text)
+    reply = _message_mind(
+        _agent_id(), text, alias=CHAT_ALIAS, timeout_seconds=CHAT_REPLY_TIMEOUT_SECONDS
     )
+    _insert_chat_row("mind", reply)
+    return reply
 
 
 def post_chat_notification(text: str) -> None:
-    """Post a system-marked notification to the chat conversation.
+    """Store a system-marked notification in the local chat thread.
 
     The message is prefixed with the system marker so the UI renders it as a
     chip and the Mind reads it as an event in the thread (e.g. trend research
-    results it can answer grounded in). The chat is initialised first when the
-    conversation is empty, mirroring ``send_chat_message``.
+    results it can answer grounded in). The thread is initialised first when
+    it is empty, mirroring ``send_chat_message``.
     """
     _agent_id()
     _ensure_chat_initialised()
-    response = _post(
-        "/v1/messaging/message",
-        {"alias": CHAT_ALIAS, "messageText": f"{SYSTEM_MARKER}{text}"},
-    )
-    if response.status_code != 200:
-        raise MindsError(f"Message send failed with status {response.status_code}")
-
+    _insert_chat_row("system", f"{SYSTEM_MARKER}{text}")
 
 
 def notify_mind(text: str) -> None:
     """Tell the Mind about an outcome it did not witness, best-effort.
 
-    Posts ``text`` as a system-marked message into the chat thread so the Mind
-    learns experiment conclusions, experiment failures and ready adaptations
-    from its own conversation (the thread is the record). Any MindsError —
-    including an unconfigured builder — is logged and swallowed: a
+    Stores ``text`` as a system-marked message in the local chat thread so
+    the outcome is recorded where the Mind's context is built from. Any
+    error — including an unconfigured builder — is logged and swallowed: a
     notification must never fail an Experiment or Adaptation that already
     succeeded (fire-and-forget by design, no reply waiting).
     """
     try:
         post_chat_notification(text)
-    except MindsError as exc:
+    except Exception as exc:
         logger.warning("Mind notification not delivered: %s", exc)
 
 
 def fetch_chat_history(limit: int = 50) -> list[ChatMessage]:
-    """Return the chat thread as role-annotated messages, oldest first.
-
-    The conversation lives natively on the Minds side (one alias = one
-    thread), so this simply maps the Builder history rows: senderType 0 rows
-    are the Mind, senderType 1 rows prefixed with the system marker are the
-    app's own notifications (marker stripped), anything else is the creator.
-    """
+    """Return the chat thread as role-annotated messages, oldest first."""
     _agent_id()
     messages: list[ChatMessage] = []
-    for row in _history_rows(CHAT_ALIAS, limit=limit):
-        text = row.get("messageText")
+    for row in _chat_rows(limit=limit):
+        text = row.text
         if not isinstance(text, str) or not text.strip():
             continue
-        fingerprint = row.get("fingerprint")
-        if _is_mind_reply(row):
-            role: Literal["user", "mind", "system"] = "mind"
-        elif text.startswith(SYSTEM_MARKER):
-            role = "system"
-            text = text[len(SYSTEM_MARKER) :]
+        if row.role == "system":
+            role: Literal["user", "mind", "system"] = "system"
+            if text.startswith(SYSTEM_MARKER):
+                text = text[len(SYSTEM_MARKER) :]
+        elif row.role == "mind":
+            role = "mind"
         else:
             role = "user"
         messages.append(
-            ChatMessage(
-                role=role,
-                text=text,
-                fingerprint=str(fingerprint) if fingerprint else None,
-            )
+            ChatMessage(role=role, text=text, fingerprint=row.id)
         )
-    messages.sort(
-        key=lambda message: _fingerprint_recency(message.fingerprint)
-        if message.fingerprint
-        else 0
-    )
     return messages
 
 
@@ -554,36 +546,37 @@ CHAT_CONTEXT_MAX_CHARS = 4000
 
 
 def build_chat_context() -> str | None:
-    """Render the Mind's own conversation thread as a prompt fragment.
+    """Render the local chat thread as a prompt fragment.
 
-    Fetches the ``mindsforge-chat`` conversation, filters to meaningful
-    messages (creator, Mind, and system notifications), renders them with
-    role annotations, and caps the output at ``CHAT_CONTEXT_MAX_CHARS``
-    characters so the prompt stays within token budgets.
+    Filters to meaningful messages (creator, Mind, and system
+    notifications), renders them with role annotations, and caps the output
+    at ``CHAT_CONTEXT_MAX_CHARS`` characters so the prompt stays within
+    token budgets.
 
     The system initialisation instruction is excluded — it is setup, not
-    memory. Returns ``None`` when the conversation is empty or the Builder
-    API is unreachable (best-effort, callers degrade gracefully).
+    memory. Returns ``None`` when the thread is empty (best-effort, callers
+    degrade gracefully).
     """
     _agent_id()
-    try:
-        rows = _history_rows(CHAT_ALIAS, limit=50)
-    except MindsError:
-        return None
+    rows = _chat_rows()
     lines: list[str] = []
     char_count = 0
     for row in reversed(rows):
-        text = row.get("messageText")
+        text = row.text
         if not isinstance(text, str) or not text.strip():
             continue
         if text == CHAT_INIT_INSTRUCTION:
             continue
-        if _is_mind_reply(row):
+        if row.role == "mind":
             role_label = "Mind"
             text_rendered = text
-        elif text.startswith(SYSTEM_MARKER):
+        elif row.role == "system":
             role_label = "[System]"
-            text_rendered = text[len(SYSTEM_MARKER) :]
+            text_rendered = (
+                text[len(SYSTEM_MARKER) :]
+                if text.startswith(SYSTEM_MARKER)
+                else text
+            )
         else:
             role_label = "Creator"
             text_rendered = text

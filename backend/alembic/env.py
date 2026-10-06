@@ -7,7 +7,7 @@ from app.core.config import BACKEND_DIR, get_settings
 from app.db.base import Base
 
 # Register every model so autogenerate sees the full metadata.
-from app.models import activity, adaptation, clip, experiment, job, memory, todo  # noqa: F401
+from app.models import activity, adaptation, chat, clip, experiment, job, memory, todo  # noqa: F401
 
 config = context.config
 
