@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (needs the `GET /todos/unread-count` endpoint)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] "Todo" nav item added to sidebar between Dashboard and Chat, using `Bell` icon from lucide-react
 - [ ] Route set to `/todo`, active state highlighting matches existing nav items

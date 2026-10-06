@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (needs the `GET /todos` and `PATCH /todos/{id}` endpoints), 05 (needs the sidebar nav item so users can navigate here)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Page at `/todo` with header showing "Todo" and total item count
 - [ ] Filter bar: All, Unread, by type (weekly digest, clip suggestion, experiment result, trend alert)
