@@ -64,8 +64,46 @@ def test_openai_endpoint_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> No
 def test_local_endpoint_needs_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     _configure_llm(monkeypatch)
     assert llm.is_configured() is True
-    assert llm.check_connection() == "ok"
     assert llm._headers() == {"Content-Type": "application/json"}
+
+
+# --- health probe ---
+
+
+def test_check_connection_probes_models_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+    urls: list[str] = []
+
+    def fake_get(url, headers, timeout):
+        urls.append(url)
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    assert llm.check_connection() == "ok"
+    assert urls == ["http://localhost:11434/v1/models"]
+
+
+def test_check_connection_down_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure_llm(monkeypatch)
+    monkeypatch.setattr(
+        httpx, "get", lambda url, headers, timeout: httpx.Response(503, text="down")
+    )
+    assert llm.check_connection() == "down"
+
+
+def test_check_connection_down_on_request_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_llm(monkeypatch)
+
+    def fake_get(url, headers, timeout):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert llm.check_connection() == "down"
 
 
 # --- HTTP seam ---

@@ -20,9 +20,7 @@ def _enable_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
 
 
-def _stub_minds(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+def _stub_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     get_settings.cache_clear()
@@ -39,7 +37,7 @@ def _stub_minds(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _stub_pipeline_stages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    _stub_minds(monkeypatch)
+    _stub_llm(monkeypatch)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
@@ -92,7 +90,7 @@ def test_url_job_visits_downloading_and_extracting_clips_statuses(
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
-    _stub_minds(monkeypatch)
+    _stub_llm(monkeypatch)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
@@ -195,7 +193,7 @@ def test_local_provider_job_completes_with_faster_whisper(
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
     monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "local")
-    _stub_minds(monkeypatch)
+    _stub_llm(monkeypatch)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")

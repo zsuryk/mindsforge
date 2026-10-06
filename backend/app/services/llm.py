@@ -54,13 +54,29 @@ def _headers() -> dict[str, str]:
     return headers
 
 
-def check_connection() -> str:
-    """Configuration probe for the health endpoint.
+HEALTH_TIMEOUT_SECONDS = 5.0
 
-    Returns "unconfigured" when the endpoint is missing configuration. The
-    live reachability probe lands with the Minds Builder removal.
+
+def check_connection() -> str:
+    """Reachability probe of the configured LLM backend for the health endpoint.
+
+    Returns "unconfigured" when the endpoint is missing configuration, "ok"
+    when ``GET {OPENAI_BASE_URL}/models`` answers, and "down" otherwise
+    (request errors, timeouts, non-200 responses). The probe is deliberately
+    short so the health endpoint stays snappy.
     """
-    return "ok" if is_configured() else "unconfigured"
+    settings = get_settings()
+    if not is_configured():
+        return "unconfigured"
+    try:
+        response = httpx.get(
+            f"{settings.OPENAI_BASE_URL.rstrip('/')}/models",
+            headers=_headers(),
+            timeout=HEALTH_TIMEOUT_SECONDS,
+        )
+    except httpx.RequestError:
+        return "down"
+    return "ok" if response.status_code == 200 else "down"
 
 
 def _chat_completion(

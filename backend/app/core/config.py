@@ -17,8 +17,6 @@ class Settings(BaseSettings):
     PORT: int = 8000
     DATABASE_URL: str = "sqlite:///./mindsforge.db"
     MEDIA_DIR: Path = BACKEND_DIR / "media"
-    MINDS_BUILDER_API_KEY: str = ""
-    MINDS_AGENT_ID: str = ""
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"

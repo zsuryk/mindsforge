@@ -102,8 +102,6 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
@@ -205,14 +203,12 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
     assert detail.json() == clip
 
 
-def test_scoring_minds_error_fails_job_and_rolls_back_clips(
+def test_scoring_llm_error_fails_job_and_rolls_back_clips(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
@@ -289,8 +285,6 @@ def test_job_without_speech_completes_without_clips(
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
@@ -379,8 +373,6 @@ def test_rerunning_pipeline_clears_stale_error_message(
 
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
@@ -451,8 +443,6 @@ def test_clip_returns_empty_latest_adaptations_when_none_exist(
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
@@ -512,8 +502,6 @@ def test_clip_returns_latest_adaptations_when_exist(
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings

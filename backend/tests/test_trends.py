@@ -46,8 +46,6 @@ class FakeResponse:
 def _configure_env(
     monkeypatch: pytest.MonkeyPatch, tavily_key: str = "test-tavily-key"
 ) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("TAVILY_API_KEY", tavily_key)

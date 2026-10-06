@@ -111,8 +111,6 @@ def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
     with get_session_factory()() as db:
         clip = make_clip(db)
 
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setattr(llm, "fetch_memory", lambda: None)

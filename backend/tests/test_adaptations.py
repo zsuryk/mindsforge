@@ -27,9 +27,7 @@ YOUTUBE_LONG_FORM_FEATURES = {
 
 
 @pytest.fixture()
-def _minds_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+def _llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
@@ -173,7 +171,7 @@ def test_regenerate_returns_cached_ready_row_without_regeneration(
 def test_pending_request_returns_cached_pending_row(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
-    _minds_env: None,
+    _llm_env: None,
 ) -> None:
     test_client, tmp_path = client
     with get_session_factory()() as db:
@@ -194,7 +192,7 @@ def test_pending_request_returns_cached_pending_row(
     assert res.json()["status"] == "PENDING"
 
 
-def test_minds_failure_fails_adaptation_with_error_message(
+def test_llm_failure_fails_adaptation_with_error_message(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

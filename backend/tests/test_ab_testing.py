@@ -69,9 +69,7 @@ def stub_winner(
 
 
 @pytest.fixture()
-def _minds_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
-    monkeypatch.setenv("MINDS_AGENT_ID", "agent-1")
+def _llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from app.core.config import get_settings
@@ -573,7 +571,7 @@ def test_sweep_concludes_above_threshold_with_mind_decided_winner(
     assert body["learned_insight"] == "A won because of its hook."
 
 
-def test_mind_failure_fails_experiment_with_error_message(
+def test_llm_failure_fails_experiment_with_error_message(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -646,7 +644,7 @@ def test_unconfigured_llm_fails_experiment_at_conclusion(
         assert "not configured" in stored.error_message
 
 
-def test_mind_picking_unknown_variant_fails_experiment(
+def test_llm_picking_unknown_variant_fails_experiment(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -726,7 +724,7 @@ def test_unexpected_exception_fails_only_that_experiment(
 
 def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
@@ -777,7 +775,7 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
 
 def test_conclusion_writes_insight_to_memory(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
@@ -822,7 +820,7 @@ def test_conclusion_writes_insight_to_memory(
 
 def test_memory_write_failure_still_concludes_experiment(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
@@ -878,7 +876,7 @@ def test_sweep_skips_concluded_experiments(
 
 def test_launched_experiment_runs_to_conclusion_via_sweeps(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     test_client, tmp_path = client
@@ -931,7 +929,7 @@ def test_launched_experiment_runs_to_conclusion_via_sweeps(
 
 def test_concluded_experiment_does_not_post_chat_notification(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, tmp_path = client
@@ -959,7 +957,7 @@ def test_concluded_experiment_does_not_post_chat_notification(
 
 def test_failed_experiment_does_not_post_chat_notification(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, tmp_path = client
@@ -1033,7 +1031,7 @@ def test_sweep_logs_one_row_for_variant_traffic(
 
 def test_conclusion_logs_activity_row_with_winner(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, tmp_path = client
@@ -1069,7 +1067,7 @@ def test_conclusion_logs_activity_row_with_winner(
 
 def test_failed_experiment_logs_activity_row(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, tmp_path = client
@@ -1102,7 +1100,7 @@ def test_failed_experiment_logs_activity_row(
 
 def test_concluded_experiment_creates_todo_item(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, tmp_path = client
@@ -1142,7 +1140,7 @@ def test_concluded_experiment_creates_todo_item(
 
 def test_failed_experiment_creates_todo_item(
     client: tuple[TestClient, Path],
-    _minds_env: None,
+    _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, tmp_path = client
