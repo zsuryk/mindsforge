@@ -9,6 +9,7 @@ from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
 from app.models.job import Job
 from app.services import ab_testing, llm
+from app.core.config import get_settings
 from app.services.pipeline import _score_clips
 
 
@@ -110,9 +111,11 @@ def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
     test_client, _ = client
     with get_session_factory()() as db:
         clip = make_clip(db)
+        add_experiment(db, clip)
 
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "")
+    get_settings.cache_clear()
     monkeypatch.setattr(llm, "fetch_memory", lambda: None)
     monkeypatch.setattr(
         llm,
@@ -124,14 +127,14 @@ def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
         ),
     )
 
-    # A simulated sweep with no active experiments still logs its heartbeat.
+    # A simulated sweep over an active experiment logs its heartbeat.
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
     # A scoring pass logs one row per scored clip.
     with get_session_factory()() as db:
         job = db.get(Job, clip.job_id)
         assert job is not None
-        _score_clips(db, job, "test-alias")
+        _score_clips(db, job)
 
     body = test_client.get("/api/v1/dashboard/activity?limit=20").json()
 
