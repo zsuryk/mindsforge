@@ -80,15 +80,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-
-      <div className="border-t border-border/40 p-3">
-        <div className="rounded-lg border border-border/40 bg-card/60 p-3 backdrop-blur-md">
-          <p className="text-xs font-medium text-foreground">OpenAI-compatible LLM</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            Any chat completions endpoint, with creator memory stored locally.
-          </p>
-        </div>
-      </div>
     </aside>
   );
 }
