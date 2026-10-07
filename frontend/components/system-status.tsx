@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { fetchHealth, type LlmStatus } from "@/lib/api";
 
 type BackendState = "online" | "offline" | "checking";
-type MindState = LlmStatus | "checking";
+type MindState = LlmStatus | "unreachable" | "checking";
 
 const BACKEND_STATE_CONFIG: Record<BackendState, { dotClass: string; label: string }> = {
   online: { dotClass: "bg-emerald-400", label: "Backend online" },
@@ -16,6 +16,7 @@ const MIND_STATE_CONFIG: Record<MindState, { dotClass: string; label: string }> 
   ok: { dotClass: "bg-emerald-400", label: "Mind online" },
   down: { dotClass: "bg-red-400", label: "Mind offline" },
   unconfigured: { dotClass: "bg-zinc-400", label: "Mind unconfigured" },
+  unreachable: { dotClass: "bg-zinc-400", label: "Mind unknown" },
   checking: { dotClass: "bg-amber-400 animate-pulse", label: "Checking…" },
 };
 
@@ -25,8 +26,11 @@ export function SystemStatus() {
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
 
     const check = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const health = await fetchHealth();
         if (!cancelled) {
@@ -36,7 +40,10 @@ export function SystemStatus() {
       } catch {
         if (!cancelled) {
           setBackendState("offline");
+          setMindState("unreachable");
         }
+      } finally {
+        inFlight = false;
       }
     };
 

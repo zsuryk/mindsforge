@@ -49,7 +49,7 @@ describe("SystemStatus", () => {
     expect(await screen.findByText(label)).toBeInTheDocument();
   });
 
-  it("marks the backend offline when the health check fails", async () => {
+  it("marks the backend offline and the mind unreachable when the health check fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockRejectedValue(new Error("network down")),
@@ -58,6 +58,7 @@ describe("SystemStatus", () => {
     render(<SystemStatus />);
 
     expect(await screen.findByText("Backend offline")).toBeInTheDocument();
-    expect(screen.getByText("Checking…")).toBeInTheDocument();
+    expect(await screen.findByText("Mind unknown")).toBeInTheDocument();
+    expect(screen.queryByText("Checking…")).not.toBeInTheDocument();
   });
 });
