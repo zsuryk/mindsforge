@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** done (fd57d6f)
+**Status:** done (5c4d5c3)
 
 - [x] `cp .env.example .env` + documented values yields a working backend against a local OpenAI-compatible server
 - [x] README setup steps verified start-to-finish without Minds credentials

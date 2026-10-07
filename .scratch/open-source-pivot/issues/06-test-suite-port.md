@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** done (7b960fd)
+**Status:** done (514a016)
 
 - [x] Full backend suite passes (`uv run pytest`) with zero Minds-API mocks
 - [x] Grep for `hellominds|MINDS_|minds\.py` in tests returns nothing
