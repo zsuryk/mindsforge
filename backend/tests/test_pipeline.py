@@ -20,10 +20,8 @@ def _enable_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
 
 
-def _stub_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    get_settings.cache_clear()
+def _stub_llm(monkeypatch: pytest.MonkeyPatch, configure_llm) -> None:
+    configure_llm()
     monkeypatch.setattr(llm, "fetch_memory", lambda: {"brand_voice": "bold"})
     monkeypatch.setattr(
         llm,
@@ -36,8 +34,10 @@ def _stub_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _stub_pipeline_stages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    _stub_llm(monkeypatch)
+def _stub_pipeline_stages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, configure_llm
+) -> Path:
+    _stub_llm(monkeypatch, configure_llm)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
@@ -60,10 +60,11 @@ def _stub_pipeline_stages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Pa
 def test_url_job_transitions_downloading_then_transcribing_and_persists_transcript(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
-    _stub_pipeline_stages(monkeypatch, tmp_path)
+    _stub_pipeline_stages(monkeypatch, tmp_path, configure_llm)
 
     res = test_client.post(
         "/api/v1/jobs/process",
@@ -87,10 +88,11 @@ def test_url_job_transitions_downloading_then_transcribing_and_persists_transcri
 def test_url_job_visits_downloading_and_extracting_clips_statuses(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
-    _stub_llm(monkeypatch)
+    _stub_llm(monkeypatch, configure_llm)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
@@ -142,10 +144,11 @@ def test_url_job_visits_downloading_and_extracting_clips_statuses(
 def test_upload_job_skips_download_and_uses_uploaded_file(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
-    _stub_pipeline_stages(monkeypatch, tmp_path)
+    _stub_pipeline_stages(monkeypatch, tmp_path, configure_llm)
     monkeypatch.setattr(media, "download_video", lambda url, target_dir: pytest.fail("download called"))
 
     res = test_client.post(
@@ -189,11 +192,12 @@ def test_stage_failure_marks_job_failed_and_stops_pipeline(
 def test_local_provider_job_completes_with_faster_whisper(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
     monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "local")
-    _stub_llm(monkeypatch)
+    _stub_llm(monkeypatch, configure_llm)
     raw = tmp_path / "raw" / "video.mp4"
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_bytes(b"fake media bytes")
@@ -264,12 +268,12 @@ def test_process_unknown_job_is_a_noop(
 def test_unconfigured_llm_fails_job_at_scoring_stage(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
-    _stub_pipeline_stages(monkeypatch, tmp_path)
-    monkeypatch.setenv("OPENAI_BASE_URL", "")
-    get_settings.cache_clear()
+    _stub_pipeline_stages(monkeypatch, tmp_path, configure_llm)
+    configure_llm(base_url="")
 
     res = test_client.post(
         "/api/v1/jobs/process",
@@ -289,6 +293,7 @@ def test_unconfigured_llm_fails_job_at_scoring_stage(
 def test_clip_less_job_fails_when_llm_unconfigured(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
@@ -305,8 +310,7 @@ def test_clip_less_job_fails_when_llm_unconfigured(
     monkeypatch.setattr(
         media, "cut_clip", lambda source, dest, start, end: pytest.fail("cut called")
     )
-    monkeypatch.setenv("OPENAI_BASE_URL", "")
-    get_settings.cache_clear()
+    configure_llm(base_url="")
 
     res = test_client.post(
         "/api/v1/jobs/process",
@@ -323,10 +327,11 @@ def test_clip_less_job_fails_when_llm_unconfigured(
 def test_scoring_llm_error_fails_job(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
-    _stub_pipeline_stages(monkeypatch, tmp_path)
+    _stub_pipeline_stages(monkeypatch, tmp_path, configure_llm)
 
     def failing_metadata(transcript, duration_seconds=None, chat_context=None, **kwargs):
         raise llm.LLMError("LLM request failed")
@@ -350,10 +355,11 @@ def test_scoring_llm_error_fails_job(
 def test_memory_fetch_failure_still_scores_without_context(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     _enable_pipeline(monkeypatch)
-    _stub_pipeline_stages(monkeypatch, tmp_path)
+    _stub_pipeline_stages(monkeypatch, tmp_path, configure_llm)
     contexts: list[str | None] = []
     monkeypatch.setattr(
         llm,

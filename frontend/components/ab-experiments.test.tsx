@@ -193,7 +193,7 @@ describe("AbExperimentsPage", () => {
       ...activeExperiment(),
       id: "exp-failed",
       status: "FAILED",
-      error_message: "builder api down",
+      error_message: "llm backend unavailable",
       winning_variant_id: null,
       learned_insight: null,
     } as AbExperiment;
@@ -205,7 +205,7 @@ describe("AbExperimentsPage", () => {
     render(<AbExperimentsPage />);
 
     expect(await screen.findByText(/Failed · YouTube Shorts · The big reveal/)).toBeInTheDocument();
-    expect(screen.getByText("builder api down")).toBeInTheDocument();
+    expect(screen.getByText("llm backend unavailable")).toBeInTheDocument();
     expect(screen.queryByText(/no concluded tests yet/i)).toBeInTheDocument();
   });
 });

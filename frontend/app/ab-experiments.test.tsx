@@ -145,7 +145,7 @@ describe("AbExperimentsPage", () => {
             activeExperiment({
               id: "exp-3",
               status: "FAILED",
-              error_message: "builder api down",
+              error_message: "llm backend unavailable",
               concluded_at: "2026-08-19T10:00:00Z",
             }),
           ],
@@ -156,7 +156,7 @@ describe("AbExperimentsPage", () => {
     render(<AbExperimentsPage />);
 
     expect(await screen.findByText(/winner/i)).toBeInTheDocument();
-    expect(screen.getByText(/builder api down/i)).toBeInTheDocument();
+    expect(screen.getByText(/llm backend unavailable/i)).toBeInTheDocument();
     expect(
       screen.queryAllByRole("button", { name: /edit/i }),
     ).toHaveLength(0);

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.services.clips import build_clip_candidates
 from app.services.transcription import TranscriptSegment
 
@@ -99,14 +100,12 @@ def test_min_and_max_bounds_are_honored() -> None:
 def test_full_pipeline_persists_clips_with_files_and_completes_job(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
+    configure_llm()
 
-    get_settings.cache_clear()
     from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
@@ -206,14 +205,12 @@ def test_full_pipeline_persists_clips_with_files_and_completes_job(
 def test_scoring_llm_error_fails_job_and_rolls_back_clips(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
+    configure_llm()
 
-    get_settings.cache_clear()
     from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
@@ -246,12 +243,12 @@ def test_scoring_llm_error_fails_job_and_rolls_back_clips(
     monkeypatch.setattr(
         llm,
         "fetch_memory",
-        lambda: (_ for _ in ()).throw(llm.LLMError("builder api down")),
+        lambda: (_ for _ in ()).throw(llm.LLMError("llm request failed")),
     )
     monkeypatch.setattr(
         llm,
         "generate_clip_metadata",
-        lambda *args, **kwargs: (_ for _ in ()).throw(llm.LLMError("builder api down")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(llm.LLMError("llm request failed")),
     )
 
     res = test_client.post(
@@ -263,7 +260,7 @@ def test_scoring_llm_error_fails_job_and_rolls_back_clips(
 
     job = test_client.get(f"/api/v1/jobs/{job_id}").json()
     assert job["status"] == "FAILED"
-    assert "builder api down" in job["error_message"]
+    assert "llm request failed" in job["error_message"]
 
     clips = test_client.get(f"/api/v1/jobs/{job_id}/clips").json()
     assert clips == []
@@ -282,14 +279,12 @@ def test_clip_detail_404s_for_unknown_clip(client: tuple[TestClient, Path]) -> N
 def test_job_without_speech_completes_without_clips(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
+    configure_llm()
 
-    get_settings.cache_clear()
     from app.services import media, transcription
     from app.services.transcription import Transcription
 
@@ -321,12 +316,12 @@ def test_job_without_speech_completes_without_clips(
 def test_clip_cut_failure_marks_job_failed(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    from app.core.config import get_settings
+    configure_llm()
 
-    get_settings.cache_clear()
     from app.services import media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
@@ -364,6 +359,7 @@ def test_clip_cut_failure_marks_job_failed(
 def test_rerunning_pipeline_clears_stale_error_message(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     from sqlalchemy import select
 
@@ -373,11 +369,8 @@ def test_rerunning_pipeline_clears_stale_error_message(
 
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
+    configure_llm()
 
-    get_settings.cache_clear()
     from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
@@ -440,14 +433,12 @@ def test_rerunning_pipeline_clears_stale_error_message(
 def test_clip_returns_empty_latest_adaptations_when_none_exist(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
+    configure_llm()
 
-    get_settings.cache_clear()
     from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 
@@ -499,14 +490,12 @@ def test_clip_returns_empty_latest_adaptations_when_none_exist(
 def test_clip_returns_latest_adaptations_when_exist(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, tmp_path = client
     monkeypatch.setenv("PROCESS_JOBS_ON_SUBMIT", "true")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
+    configure_llm()
 
-    get_settings.cache_clear()
     from app.services import llm, media, transcription
     from app.services.transcription import Transcription, TranscriptSegment
 

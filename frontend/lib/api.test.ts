@@ -7,6 +7,7 @@ import {
   fetchChatHistory,
   fetchClip,
   fetchDashboardStats,
+  fetchHealth,
   fetchJob,
   fetchJobClips,
   fetchJobs,
@@ -200,10 +201,10 @@ describe("fetchAgentMemory", () => {
   it("throws the backend detail message on error responses", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ detail: "builder api down" }, 502)),
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "llm backend unavailable" }, 502)),
     );
 
-    await expect(fetchAgentMemory()).rejects.toThrow("builder api down");
+    await expect(fetchAgentMemory()).rejects.toThrow("llm backend unavailable");
   });
 });
 
@@ -398,10 +399,10 @@ describe("fetchChatHistory", () => {
   it("throws the backend detail message on error responses", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ detail: "minds api down" }, 502)),
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "llm backend unavailable" }, 502)),
     );
 
-    await expect(fetchChatHistory()).rejects.toThrow("minds api down");
+    await expect(fetchChatHistory()).rejects.toThrow("llm backend unavailable");
   });
 });
 
@@ -427,10 +428,10 @@ describe("sendChatMessage", () => {
   it("throws the backend detail message on error responses", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ detail: "minds api down" }, 502)),
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "llm backend unavailable" }, 502)),
     );
 
-    await expect(sendChatMessage("hello")).rejects.toThrow("minds api down");
+    await expect(sendChatMessage("hello")).rejects.toThrow("llm backend unavailable");
   });
 });
 
@@ -462,5 +463,47 @@ describe("researchTrends", () => {
     );
 
     await expect(researchTrends("hooks")).rejects.toThrow("tavily api down");
+  });
+});
+
+describe("fetchHealth", () => {
+  const health = {
+    status: "ok",
+    service: "mindsforge-backend",
+    llm: "ok",
+    timestamp: "2026-10-07T00:00:00+00:00",
+  };
+
+  it("reads the llm status from the health endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(health));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchHealth();
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/health");
+    expect(init).toEqual({ cache: "no-store" });
+    expect(result).toEqual(health);
+  });
+
+  it.each(["ok", "down", "unconfigured"] as const)(
+    "surfaces the %s llm status",
+    async (llm) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(jsonResponse({ ...health, llm })),
+      );
+
+      await expect(fetchHealth()).resolves.toMatchObject({ llm });
+    },
+  );
+
+  it("throws on a non-ok health response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "boom" }, 503)),
+    );
+
+    await expect(fetchHealth()).rejects.toThrow("503");
   });
 });

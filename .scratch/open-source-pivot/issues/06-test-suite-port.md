@@ -4,8 +4,8 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done (7b960fd)
 
-- [ ] Full backend suite passes (`uv run pytest`) with zero Minds-API mocks
-- [ ] Grep for `hellominds|MINDS_|minds\.py` in tests returns nothing
-- [ ] Frontend `vitest` suite passes with sidebar copy change covered
+- [x] Full backend suite passes (`uv run pytest`) with zero Minds-API mocks
+- [x] Grep for `hellominds|MINDS_|minds\.py` in tests returns nothing
+- [x] Frontend `vitest` suite passes with sidebar copy change covered

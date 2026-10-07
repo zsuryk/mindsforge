@@ -152,12 +152,12 @@ describe("ChatPage", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValue(jsonResponse({ detail: "minds api down" }, 502)),
+        .mockResolvedValue(jsonResponse({ detail: "llm backend unavailable" }, 502)),
     );
 
     render(<ChatPage />);
 
-    expect(await screen.findByText("minds api down")).toBeInTheDocument();
+    expect(await screen.findByText("llm backend unavailable")).toBeInTheDocument();
   });
 
   it("polls history while a reply is pending", async () => {
@@ -224,7 +224,7 @@ describe("ChatPage", () => {
               jsonResponse({ messages: historyBodies.shift() }),
             );
           }
-          return Promise.resolve(jsonResponse({ detail: "minds api down" }, 502));
+          return Promise.resolve(jsonResponse({ detail: "llm backend unavailable" }, 502));
         }
         return Promise.resolve(jsonResponse({ messages: [] }));
       }),
@@ -238,7 +238,7 @@ describe("ChatPage", () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
 
-    expect(screen.getByText("minds api down")).toBeInTheDocument();
+    expect(screen.getByText("llm backend unavailable")).toBeInTheDocument();
     expect(screen.getByText("Keep bolder hooks")).toBeInTheDocument();
   });
 

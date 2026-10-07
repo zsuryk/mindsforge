@@ -53,4 +53,15 @@ describe("Sidebar", () => {
     await screen.findByText("99+");
     expect(screen.getByText("99+")).toBeInTheDocument();
   });
+
+  it("describes the backend in vendor-neutral terms", () => {
+    render(<Sidebar />);
+
+    expect(screen.getByText("OpenAI-compatible LLM")).toBeInTheDocument();
+    expect(
+      screen.getByText(/any chat completions endpoint, with creator memory stored locally/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/powered by minds/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/animoca/i)).not.toBeInTheDocument();
+  });
 });

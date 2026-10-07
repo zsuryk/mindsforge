@@ -239,7 +239,7 @@ describe("AdaptationStudio", () => {
       status: "FAILED",
       features: null,
       assets: null,
-      error_message: "builder api down",
+      error_message: "llm backend unavailable",
     } as unknown as Adaptation;
     const created = { ...failed, status: "PENDING" } as unknown as Adaptation;
     stubFetchForGenerate({ created, ready: failed });
@@ -316,7 +316,7 @@ describe("AdaptationStudio", () => {
       status: "FAILED",
       features: null,
       assets: null,
-      error_message: "builder api down",
+      error_message: "llm backend unavailable",
     } as unknown as Adaptation;
     const created = {
       ...failed,
@@ -329,7 +329,7 @@ describe("AdaptationStudio", () => {
     await user.click(await screen.findByRole("button", { name: /generate/i }));
 
     expect(await screen.findByText("FAILED")).toBeInTheDocument();
-    expect(screen.getByText("builder api down")).toBeInTheDocument();
+    expect(screen.getByText("llm backend unavailable")).toBeInTheDocument();
   });
 
   it("launches a thumbnail A/B test with the rendered variants", async () => {

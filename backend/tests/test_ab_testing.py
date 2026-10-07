@@ -61,7 +61,7 @@ def stub_winner(
     variant_id: str | None = None,
     reasoning: str = "Hook A held viewers longer; reuse this formula.",
 ) -> None:
-    def decide(platform, variants, transcript, chat_context=None, conversation_alias=None):
+    def decide(platform, variants, transcript, chat_context=None):
         picked = variant_id if variant_id is not None else variants[0]["variant_id"]
         return llm.ExperimentVerdict(winning_variant_id=picked, reasoning=reasoning)
 
@@ -69,14 +69,9 @@ def stub_winner(
 
 
 @pytest.fixture()
-def _llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
+def _llm_env(configure_llm) -> None:
+    """Point the LLM client at a local OpenAI-compatible endpoint."""
+    configure_llm()
 
 
 def test_start_ab_test_creates_active_experiment_with_variant_thumbs(
@@ -254,7 +249,7 @@ def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
             clip_id=clip.id,
             variants=[{"variant_id": "v3", "title": "C", "ctr": 1.0, "views": 10}],
             status=AbExperimentStatus.FAILED,
-            error_message="builder api down",
+            error_message="llm request failed",
             created_at=now - timedelta(days=31),
             concluded_at=now - timedelta(hours=3),
         )
@@ -274,7 +269,7 @@ def test_active_endpoint_returns_active_and_recently_concluded_newest_first(
     assert concluded_body["clip_title"] == "My clip"
     failed_body = body["experiments"][2]
     assert failed_body["status"] == "FAILED"
-    assert failed_body["error_message"] == "builder api down"
+    assert failed_body["error_message"] == "llm request failed"
 
 
 def test_active_endpoint_exposes_data_source_per_experiment(
@@ -590,9 +585,9 @@ def test_llm_failure_fails_experiment_with_error_message(
     monkeypatch.setattr(
         llm,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
-        ).throw(llm.LLMError("builder api down")),
+        ).throw(llm.LLMError("llm request failed")),
     )
 
     concluded = ab_testing.refresh_active_experiments(view_threshold=1000)
@@ -603,7 +598,7 @@ def test_llm_failure_fails_experiment_with_error_message(
         assert stored.status == AbExperimentStatus.FAILED
         assert stored.winning_variant_id is None
         assert stored.learned_insight is None
-        assert "builder api down" in stored.error_message
+        assert "llm request failed" in stored.error_message
 
     body = test_client.get("/api/v1/ab-tests/active").json()
     assert experiment.id in {item["id"] for item in body["experiments"]}
@@ -611,17 +606,14 @@ def test_llm_failure_fails_experiment_with_error_message(
         item for item in body["experiments"] if item["id"] == experiment.id
     )
     assert failed_body["status"] == "FAILED"
-    assert "builder api down" in failed_body["error_message"]
+    assert "llm request failed" in failed_body["error_message"]
 
 
 def test_unconfigured_llm_fails_experiment_at_conclusion(
     client: tuple[TestClient, Path],
-    monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
-    monkeypatch.setenv("OPENAI_BASE_URL", "")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
+    configure_llm(base_url="")
     test_client, tmp_path = client
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
@@ -663,7 +655,7 @@ def test_llm_picking_unknown_variant_fails_experiment(
     monkeypatch.setattr(
         llm,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
         ).throw(llm.LLMError("Experiment verdict picked unknown variant id 'ghost'")),
     )
@@ -700,7 +692,7 @@ def test_unexpected_exception_fails_only_that_experiment(
             ],
         )
 
-    def decide(platform, variants, transcript, chat_context=None, conversation_alias=None):
+    def decide(platform, variants, transcript, chat_context=None):
         if variants[0]["variant_id"] == "v1":
             raise RuntimeError("boom in the verdict code")
         return llm.ExperimentVerdict(
@@ -726,6 +718,7 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
     client: tuple[TestClient, Path],
     _llm_env: None,
     monkeypatch: pytest.MonkeyPatch,
+    llm_http,
 ) -> None:
     test_client, tmp_path = client
     with get_session_factory()() as db:
@@ -753,19 +746,12 @@ def test_winner_prompt_lists_thumbnail_references_and_glossary_terms(
             ],
         )
 
-    captured: dict[str, object] = {}
-
-    def fake_chat_completion(messages, **kwargs):
-        captured["prompt"] = messages[0]["content"]
-        return '{"winning_variant_id": "v1", "reasoning": "A won"}'
-
-    monkeypatch.setattr(llm, "_chat_completion", fake_chat_completion)
+    llm_http.reply_with('{"winning_variant_id": "v1", "reasoning": "A won"}')
     monkeypatch.setattr(llm, "fetch_memory", lambda: {})
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
 
-    prompt = captured["prompt"]
-    assert isinstance(prompt, str)
+    prompt = llm_http.prompt(0)
     assert "thumbnail: /media/adaptations/adapt-1/thumb_1.png" in prompt
     assert "thumbnail: /media/adaptations/adapt-1/thumb_2.png" in prompt
     assert "A/B experiment" in prompt
@@ -839,7 +825,7 @@ def test_memory_write_failure_still_concludes_experiment(
     monkeypatch.setattr(
         llm,
         "fetch_memory",
-        lambda: (_ for _ in ()).throw(llm.LLMError("builder api down")),
+        lambda: (_ for _ in ()).throw(llm.LLMError("llm request failed")),
     )
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
@@ -975,9 +961,9 @@ def test_failed_experiment_does_not_post_chat_notification(
     monkeypatch.setattr(
         llm,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
-        ).throw(llm.LLMError("builder api down")),
+        ).throw(llm.LLMError("llm request failed")),
     )
     notifications: list[str] = []
     monkeypatch.setattr(llm, "notify_mind", notifications.append)
@@ -1085,9 +1071,9 @@ def test_failed_experiment_logs_activity_row(
     monkeypatch.setattr(
         llm,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
-        ).throw(llm.LLMError("builder api down")),
+        ).throw(llm.LLMError("llm request failed")),
     )
 
     ab_testing.refresh_active_experiments(view_threshold=1000)
@@ -1095,7 +1081,7 @@ def test_failed_experiment_logs_activity_row(
     failed = [row for row in _activity_rows() if row.event_type == "experiment-failed"]
     assert len(failed) == 1
     assert failed[0].ref_id == experiment.id
-    assert failed[0].label == f"Experiment {experiment.id} failed: builder api down"
+    assert failed[0].label == f"Experiment {experiment.id} failed: llm request failed"
 
 
 def test_concluded_experiment_creates_todo_item(
@@ -1158,9 +1144,9 @@ def test_failed_experiment_creates_todo_item(
     monkeypatch.setattr(
         llm,
         "decide_experiment_winner",
-        lambda platform, variants, transcript, chat_context=None, conversation_alias=None: (
+        lambda platform, variants, transcript, chat_context=None: (
             _ for _ in ()
-        ).throw(llm.LLMError("builder api down")),
+        ).throw(llm.LLMError("llm request failed")),
     )
 
     created: list[dict] = []
@@ -1176,5 +1162,5 @@ def test_failed_experiment_creates_todo_item(
 
     assert len(created) == 1
     assert created[0]["type"] == TodoItemType.EXPERIMENT_RESULT
-    assert "builder api down" in created[0]["body"]
+    assert "llm request failed" in created[0]["body"]
     assert created[0]["action_url"] is not None

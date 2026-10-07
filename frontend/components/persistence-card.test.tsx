@@ -100,7 +100,7 @@ describe("PersistenceCard", () => {
       "fetch",
       vi.fn(() =>
         Promise.resolve(
-          jsonResponse({ detail: "Minds is not configured" }, 503),
+          jsonResponse({ detail: "LLM backend is not configured" }, 503),
         ),
       ),
     );

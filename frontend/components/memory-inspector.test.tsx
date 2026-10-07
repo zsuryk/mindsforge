@@ -97,13 +97,13 @@ describe("MemoryInspectorPage", () => {
       "fetch",
       vi.fn().mockImplementation((url: string) => {
         if (url.includes("/chat/history")) return jsonResponse(chatHistory);
-        return jsonResponse({ detail: "builder api down" }, 502);
+        return jsonResponse({ detail: "llm backend unavailable" }, 502);
       }),
     );
 
     render(<MemoryInspectorPage />);
 
-    expect(await screen.findByText("builder api down")).toBeInTheDocument();
+    expect(await screen.findByText("llm backend unavailable")).toBeInTheDocument();
   });
 
   it("writes a key/value to memory and reflects it after re-fetch", async () => {

@@ -9,7 +9,6 @@ from app.models.clip import Clip
 from app.models.experiment import AbExperiment, AbExperimentStatus
 from app.models.job import Job
 from app.services import ab_testing, llm
-from app.core.config import get_settings
 from app.services.pipeline import _score_clips
 
 
@@ -107,15 +106,14 @@ def test_dashboard_stats_avg_virality_is_null_without_scored_clips(
 def test_activity_endpoint_lists_simulated_sweep_and_scoring_rows(
     client: tuple[TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,
+    configure_llm,
 ) -> None:
     test_client, _ = client
     with get_session_factory()() as db:
         clip = make_clip(db)
         add_experiment(db, clip)
 
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    get_settings.cache_clear()
+    configure_llm()
     monkeypatch.setattr(llm, "fetch_memory", lambda: None)
     monkeypatch.setattr(
         llm,

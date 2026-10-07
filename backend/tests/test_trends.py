@@ -1,3 +1,6 @@
+import json
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 
@@ -34,63 +37,51 @@ TAVILY_BODY = {
 TAVILY_BODY_RESULTS = TAVILY_BODY["results"]
 
 
-class FakeResponse:
-    def __init__(self, payload, status_code: int = 200) -> None:
-        self._payload = payload
-        self.status_code = status_code
-
-    def json(self):
-        return self._payload
+@pytest.fixture(autouse=True)
+def _local_llm(configure_llm) -> None:
+    """Point the LLM client at a local OpenAI-compatible endpoint."""
+    configure_llm()
 
 
-def _configure_env(
+def _configure_tavily(
     monkeypatch: pytest.MonkeyPatch, tavily_key: str = "test-tavily-key"
 ) -> None:
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
+    """Set the Tavily key; the LLM endpoint comes from the _local_llm fixture."""
+    from app.core.config import get_settings
+
     monkeypatch.setenv("TAVILY_API_KEY", tavily_key)
-    from app.core.config import get_settings
-
     get_settings.cache_clear()
 
 
-@pytest.fixture(autouse=True)
-def _fresh_settings() -> None:
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
-
-
-def _stub_tavily(
-    monkeypatch: pytest.MonkeyPatch, *, body=None, status_code=200, error=None
-):
+def _stub_tavily(llm_http, *, body=None, status_code=200, error=None) -> list[dict]:
+    """Answer Tavily searches on the shared transport, recording each request."""
     calls: list[dict] = []
 
-    def fake_post(url, json=None, timeout=None, **kwargs):
-        calls.append({"url": url, "json": json})
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append({"url": str(request.url), "json": json.loads(request.content)})
         if error is not None:
             raise error
-        if isinstance(body, FakeResponse):
-            return body
-        return FakeResponse(body, status_code)
+        if status_code != 200:
+            return httpx.Response(status_code, json={"detail": "nope"})
+        if body is None:
+            return httpx.Response(200, text="not json")
+        return httpx.Response(200, json=body)
 
-    monkeypatch.setattr(httpx, "post", fake_post)
+    llm_http.route("api.tavily.com", handler)
     return calls
 
 
-def _stub_chat(monkeypatch: pytest.MonkeyPatch) -> None:
+def _stub_chat(llm_http, reply: str = "chat reply") -> None:
     """Reply to chat turns with a canned answer (Tavily traffic is separate)."""
-    monkeypatch.setattr(llm, "_chat_completion", lambda messages, **kwargs: "chat reply")
+    llm_http.reply_with(reply)
 
 
 # --- search_trends ---
 
 
-def test_search_trends_returns_parsed_results(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure_env(monkeypatch)
-    calls = _stub_tavily(monkeypatch, body=TAVILY_BODY)
+def test_search_trends_returns_parsed_results(monkeypatch: pytest.MonkeyPatch, llm_http) -> None:
+    _configure_tavily(monkeypatch)
+    calls = _stub_tavily(llm_http, body=TAVILY_BODY)
 
     results = trends.search_trends("fitness shorts")
 
@@ -109,50 +100,47 @@ def test_search_trends_returns_parsed_results(monkeypatch: pytest.MonkeyPatch) -
 def test_search_trends_raises_naming_key_when_unconfigured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _configure_env(monkeypatch, tavily_key="")
+    _configure_tavily(monkeypatch, tavily_key="")
 
     with pytest.raises(trends.TrendSearchError, match="TAVILY_API_KEY"):
         trends.search_trends("fitness shorts")
 
 
-def test_search_trends_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, status_code=429)
+def test_search_trends_raises_on_http_error(monkeypatch: pytest.MonkeyPatch, llm_http) -> None:
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, status_code=429)
 
     with pytest.raises(trends.TrendSearchError, match="status 429"):
         trends.search_trends("fitness shorts")
 
 
-def test_search_trends_raises_on_request_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, error=httpx.ConnectError("connection refused"))
+def test_search_trends_raises_on_request_error(monkeypatch: pytest.MonkeyPatch, llm_http) -> None:
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, error=httpx.ConnectError("connection refused"))
 
     with pytest.raises(trends.TrendSearchError, match="connection refused"):
         trends.search_trends("fitness shorts")
 
 
 def test_search_trends_raises_on_non_json_or_unexpected_shape(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, llm_http,
 ) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, body=[{"not": "a dict"}])
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, body=[{"not": "a dict"}])
     with pytest.raises(trends.TrendSearchError, match="unexpected shape"):
         trends.search_trends("fitness shorts")
 
-    class NonJsonResponse(FakeResponse):
-        def json(self):
-            raise ValueError("not json")
-
-    _stub_tavily(monkeypatch, body=NonJsonResponse("nope"))
+    # A body=None stub answers with plain text, which is not JSON at all.
+    _stub_tavily(llm_http, body=None)
     with pytest.raises(trends.TrendSearchError, match="non-JSON"):
         trends.search_trends("fitness shorts")
 
 
 def test_search_trends_raises_on_non_dict_result_item(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, llm_http,
 ) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, body={"results": ["not a dict"]})
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, body={"results": ["not a dict"]})
 
     with pytest.raises(trends.TrendSearchError, match="unexpected shape"):
         trends.search_trends("fitness shorts")
@@ -162,11 +150,11 @@ def test_search_trends_raises_on_non_dict_result_item(
 
 
 def test_api_chat_trends_researches_persists_and_notifies(
-    client, monkeypatch: pytest.MonkeyPatch
+    client, monkeypatch: pytest.MonkeyPatch, llm_http
 ) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    _stub_chat(monkeypatch)
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, body=TAVILY_BODY)
+    _stub_chat(llm_http)
 
     test_client, _ = client
     res = test_client.post(
@@ -203,10 +191,10 @@ def test_api_chat_trends_researches_persists_and_notifies(
 
 
 def test_research_trends_bounds_memory_to_last_10_entries(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, llm_http,
 ) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, body=TAVILY_BODY)
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, body=TAVILY_BODY)
     existing = [
         {
             "query": f"old {i}",
@@ -242,7 +230,7 @@ def test_research_trends_bounds_memory_to_last_10_entries(
 def test_api_chat_trends_502_when_tavily_unconfigured(
     client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _configure_env(monkeypatch, tavily_key="")
+    _configure_tavily(monkeypatch, tavily_key="")
 
     test_client, _ = client
     res = test_client.post("/api/v1/chat/trends", json={"query": "fitness shorts"})
@@ -255,11 +243,11 @@ def test_api_chat_trends_502_when_tavily_unconfigured(
 
 
 def test_inline_trigger_researches_before_posting_user_message(
-    client, monkeypatch: pytest.MonkeyPatch
+    client, monkeypatch: pytest.MonkeyPatch, llm_http
 ) -> None:
-    _configure_env(monkeypatch)
-    tavily_calls = _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    _stub_chat(monkeypatch)
+    _configure_tavily(monkeypatch)
+    tavily_calls = _stub_tavily(llm_http, body=TAVILY_BODY)
+    _stub_chat(llm_http)
 
     test_client, _ = client
     res = test_client.post(
@@ -276,11 +264,11 @@ def test_inline_trigger_researches_before_posting_user_message(
 
 
 def test_message_without_trigger_sends_untouched(
-    client, monkeypatch: pytest.MonkeyPatch
+    client, monkeypatch: pytest.MonkeyPatch, llm_http
 ) -> None:
-    _configure_env(monkeypatch)
-    tavily_calls = _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    _stub_chat(monkeypatch)
+    _configure_tavily(monkeypatch)
+    tavily_calls = _stub_tavily(llm_http, body=TAVILY_BODY)
+    _stub_chat(llm_http)
 
     test_client, _ = client
     res = test_client.post("/api/v1/chat/messages", json={"message": "hello there"})
@@ -295,7 +283,7 @@ def test_message_without_trigger_sends_untouched(
 def test_inline_trigger_502_when_tavily_unconfigured(
     client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _configure_env(monkeypatch, tavily_key="")
+    _configure_tavily(monkeypatch, tavily_key="")
 
     test_client, _ = client
     res = test_client.post(
@@ -310,8 +298,6 @@ def test_inline_trigger_502_when_tavily_unconfigured(
 
 
 def _recent_iso(days_ago: int) -> str:
-    from datetime import UTC, datetime, timedelta
-
     return (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
 
 
@@ -354,8 +340,6 @@ def test_build_trend_block_skips_stale_entries() -> None:
 
 
 def test_build_trend_block_accepts_naive_timestamps() -> None:
-    from datetime import UTC, datetime, timedelta
-
     naive = (datetime.now(UTC) - timedelta(days=1)).replace(tzinfo=None).isoformat()
     entry = _entry("fitness shorts", 1)
     entry["researched_at"] = naive
@@ -386,11 +370,11 @@ def test_build_trend_block_keeps_latest_five_entries() -> None:
 
 
 def test_weekly_trend_research_creates_digest_todo_item(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, llm_http,
 ) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    _stub_chat(monkeypatch)
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, body=TAVILY_BODY)
+    _stub_chat(llm_http)
     monkeypatch.setattr(llm, "fetch_memory", lambda: {})
     monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
     notifications: list[str] = []
@@ -419,12 +403,12 @@ def test_weekly_trend_research_creates_digest_todo_item(
 
 
 def test_weekly_trend_research_no_chat_notification(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, llm_http,
 ) -> None:
     """Verify that weekly_trend_research does NOT post to chat."""
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    _stub_chat(monkeypatch)
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, body=TAVILY_BODY)
+    _stub_chat(llm_http)
     monkeypatch.setattr(llm, "fetch_memory", lambda: {})
     monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
     notifications: list[str] = []
@@ -447,11 +431,11 @@ def test_weekly_trend_research_no_chat_notification(
 
 
 def test_weekly_trend_research_no_digest_when_paused(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, llm_http,
 ) -> None:
-    _configure_env(monkeypatch)
-    _stub_tavily(monkeypatch, body=TAVILY_BODY)
-    _stub_chat(monkeypatch)
+    _configure_tavily(monkeypatch)
+    _stub_tavily(llm_http, body=TAVILY_BODY)
+    _stub_chat(llm_http)
     monkeypatch.setattr(llm, "fetch_memory", lambda: {"weekly_trends_paused": True})
     monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
 
@@ -470,13 +454,13 @@ def test_weekly_trend_research_no_digest_when_paused(
 
 
 def test_weekly_trend_research_no_digest_when_no_results(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, llm_http,
 ) -> None:
-    _configure_env(monkeypatch)
+    _configure_tavily(monkeypatch)
     # Stub Tavily to return empty results for all platforms
     empty_body = {"query": "test", "results": []}
-    _stub_tavily(monkeypatch, body=empty_body)
-    _stub_chat(monkeypatch)
+    _stub_tavily(llm_http, body=empty_body)
+    _stub_chat(llm_http)
     monkeypatch.setattr(llm, "fetch_memory", lambda: {})
     monkeypatch.setattr(llm, "update_memory", lambda *a, **kw: True)
     notifications: list[str] = []
@@ -501,7 +485,7 @@ def test_weekly_trend_research_no_digest_when_no_results(
 def test_build_weekly_digest_body_contains_trends_section(
     monkeypatch: pytest.MonkeyPatch, client
 ) -> None:
-    _configure_env(monkeypatch)
+    _configure_tavily(monkeypatch)
     all_results = {
         "youtube": [
             trends.TrendResult(title="YT Trend 1", url="https://yt1.com", content=""),
@@ -526,7 +510,7 @@ def test_build_weekly_digest_body_clip_performance(
     monkeypatch: pytest.MonkeyPatch, client
 ) -> None:
     test_client, _ = client
-    _configure_env(monkeypatch)
+    _configure_tavily(monkeypatch)
 
     # Create a clip directly via the DB
     from app.db.base import get_session_factory
@@ -566,7 +550,7 @@ def test_build_weekly_digest_body_suggestions_high_virality(
     monkeypatch: pytest.MonkeyPatch, client
 ) -> None:
     test_client, _ = client
-    _configure_env(monkeypatch)
+    _configure_tavily(monkeypatch)
 
     from app.db.base import get_session_factory
     from app.models.clip import Clip
@@ -600,7 +584,7 @@ def test_build_weekly_digest_body_suggestions_low_virality(
     monkeypatch: pytest.MonkeyPatch, client
 ) -> None:
     test_client, _ = client
-    _configure_env(monkeypatch)
+    _configure_tavily(monkeypatch)
 
     from app.db.base import get_session_factory
     from app.models.clip import Clip
@@ -633,7 +617,7 @@ def test_build_weekly_digest_body_suggestions_low_virality(
 def test_build_weekly_digest_body_no_clips(
     monkeypatch: pytest.MonkeyPatch, client
 ) -> None:
-    _configure_env(monkeypatch)
+    _configure_tavily(monkeypatch)
 
     all_results = {"youtube": [trends.TrendResult(**TAVILY_BODY_RESULTS[0])]}
     body, action_url, action_label = trends._build_weekly_digest_body(all_results)
@@ -642,3 +626,61 @@ def test_build_weekly_digest_body_no_clips(
     assert "No clips scored yet" in body
     assert action_url is None
     assert action_label is None
+
+
+
+# --- weekly trends status and toggle ---
+
+
+def test_weekly_status_reads_pause_and_last_run_from_local_memory(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_tavily(monkeypatch)
+    last_run = datetime.now(UTC).isoformat()
+    monkeypatch.setattr(
+        llm,
+        "fetch_memory",
+        lambda: {
+            trends.WEEKLY_TRENDS_LAST_RUN_KEY: last_run,
+            trends.WEEKLY_TRENDS_PAUSED_KEY: True,
+        },
+    )
+    test_client, _ = client
+
+    body = test_client.get("/api/v1/chat/trends/weekly-status").json()
+
+    assert body["last_run"] == last_run
+    assert body["paused"] is True
+    assert body["next_run"]
+
+
+def test_weekly_status_is_empty_without_a_prior_run(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_tavily(monkeypatch)
+    test_client, _ = client
+
+    body = test_client.get("/api/v1/chat/trends/weekly-status").json()
+
+    assert body == {"last_run": None, "paused": False, "next_run": None}
+
+
+def test_weekly_toggle_persists_the_pause_in_local_memory(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_tavily(monkeypatch)
+    test_client, _ = client
+
+    paused = test_client.post(
+        "/api/v1/chat/trends/weekly-toggle", json={"paused": True}
+    ).json()
+
+    assert paused["paused"] is True
+    # Persisted, so a fresh read agrees.
+    assert test_client.get("/api/v1/chat/trends/weekly-status").json()["paused"] is True
+
+    resumed = test_client.post(
+        "/api/v1/chat/trends/weekly-toggle", json={"paused": False}
+    ).json()
+
+    assert resumed["paused"] is False

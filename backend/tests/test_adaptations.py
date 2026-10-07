@@ -27,14 +27,9 @@ YOUTUBE_LONG_FORM_FEATURES = {
 
 
 @pytest.fixture()
-def _llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
+def _llm_env(configure_llm) -> None:
+    """Point the LLM client at a local OpenAI-compatible endpoint."""
+    configure_llm()
 
 
 def make_clip(db, tmp_path: Path, title: str = "Adaptation clip") -> Clip:
@@ -78,7 +73,7 @@ def stub_features(
     error: Exception | None = None,
 ) -> None:
     def generate(
-        clip, platform, surface, segments, chat_context=None, conversation_alias=None
+        clip, platform, surface, segments, chat_context=None
     ):
         if error is not None:
             raise error
@@ -199,7 +194,7 @@ def test_llm_failure_fails_adaptation_with_error_message(
     test_client, tmp_path = client
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
-    stub_features(monkeypatch, error=llm.LLMError("builder api down"))
+    stub_features(monkeypatch, error=llm.LLMError("llm request failed"))
 
     res = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
 
@@ -207,7 +202,7 @@ def test_llm_failure_fails_adaptation_with_error_message(
     adaptation_id = res.json()["id"]
     detail = test_client.get(f"/api/v1/clips/{clip.id}/adaptations/{adaptation_id}").json()
     assert detail["status"] == "FAILED"
-    assert "builder api down" in detail["error_message"]
+    assert "llm request failed" in detail["error_message"]
     assert detail["features"] is None
 
 
@@ -219,7 +214,7 @@ def test_failed_adaptation_can_be_retried(
     stub_rendering(monkeypatch)
     with get_session_factory()() as db:
         clip = make_clip(db, tmp_path)
-    stub_features(monkeypatch, error=llm.LLMError("builder api down"))
+    stub_features(monkeypatch, error=llm.LLMError("llm request failed"))
 
     first = test_client.post(f"/api/v1/clips/{clip.id}/adaptations/tiktok/POST")
     adaptation_id = first.json()["id"]

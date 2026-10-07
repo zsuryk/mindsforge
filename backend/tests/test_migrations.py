@@ -138,8 +138,15 @@ def test_0009_creates_chat_messages_table(
     from app.db.base import get_engine, get_session_factory
 
     get_engine.cache_clear()
-    columns = {c["name"] for c in inspect(get_engine()).get_columns("chat_messages")}
-    assert columns == {"id", "role", "text", "thread_id", "created_at"}
+    inspector = inspect(get_engine())
+    assert "chat_messages" in inspector.get_table_names()
+    assert {c["name"] for c in inspector.get_columns("chat_messages")} == {
+        "id",
+        "role",
+        "text",
+        "thread_id",
+        "created_at",
+    }
     with get_session_factory()() as db:
         db.execute(
             text(
@@ -148,5 +155,10 @@ def test_0009_creates_chat_messages_table(
             )
         )
         db.commit()
-        row = db.execute(text("SELECT role, text FROM chat_messages")).first()
-        assert row == ("user", "hello")
+        row = db.execute(text("SELECT role, text, thread_id FROM chat_messages")).first()
+        assert row == ("user", "hello", "default")
+
+    # Downgrade back: the table is dropped.
+    command.downgrade(alembic_config, "b3c4d5e6f7a8")
+
+    assert "chat_messages" not in inspect(get_engine()).get_table_names()
