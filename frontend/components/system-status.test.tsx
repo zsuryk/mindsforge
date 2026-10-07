@@ -29,12 +29,12 @@ describe("SystemStatus", () => {
     render(<SystemStatus />);
 
     expect(await screen.findByText("Backend online")).toBeInTheDocument();
-    expect(screen.getByText("Mind online")).toBeInTheDocument();
+    expect(screen.getByText("LLM online")).toBeInTheDocument();
   });
 
   it.each([
-    ["down", "Mind offline"],
-    ["unconfigured", "Mind unconfigured"],
+    ["down", "LLM offline"],
+    ["unconfigured", "LLM unconfigured"],
   ] as const)("labels the %s llm status", async (llm, label) => {
     vi.stubGlobal(
       "fetch",
@@ -58,7 +58,7 @@ describe("SystemStatus", () => {
     render(<SystemStatus />);
 
     expect(await screen.findByText("Backend offline")).toBeInTheDocument();
-    expect(await screen.findByText("Mind unknown")).toBeInTheDocument();
+    expect(await screen.findByText("LLM unknown")).toBeInTheDocument();
     expect(screen.queryByText("Checking…")).not.toBeInTheDocument();
   });
 });

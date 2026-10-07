@@ -13,10 +13,10 @@ const BACKEND_STATE_CONFIG: Record<BackendState, { dotClass: string; label: stri
 };
 
 const MIND_STATE_CONFIG: Record<MindState, { dotClass: string; label: string }> = {
-  ok: { dotClass: "bg-emerald-400", label: "Mind online" },
-  down: { dotClass: "bg-red-400", label: "Mind offline" },
-  unconfigured: { dotClass: "bg-zinc-400", label: "Mind unconfigured" },
-  unreachable: { dotClass: "bg-zinc-400", label: "Mind unknown" },
+  ok: { dotClass: "bg-emerald-400", label: "LLM online" },
+  down: { dotClass: "bg-red-400", label: "LLM offline" },
+  unconfigured: { dotClass: "bg-zinc-400", label: "LLM unconfigured" },
+  unreachable: { dotClass: "bg-zinc-400", label: "LLM unknown" },
   checking: { dotClass: "bg-amber-400 animate-pulse", label: "Checking…" },
 };
 
