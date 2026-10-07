@@ -8,7 +8,7 @@ MindsForge is an AI-powered creator platform that:
 - **Adapts for every platform** — generates platform-specific variants of each clip.
 - **A/B tests by itself** — launches experiments and tracks which variant wins.
 - **Chats with the creator** — ask it anything, state brand rules ("always use bold captions"), and it researches live trends (Tavily) before answering.
-- **Remembers creators** — persistent creator memory via Minds by Animoca Brands, proven at a glance on the dashboard.
+- **Remembers creators** — persistent creator memory in local SQLite, proven at a glance on the dashboard.
 - **Works 24/7 in the background** — a live "Mind at Work" feed shows scoring, experiment sweeps, and adaptation generation as they happen.
 
 ## What it generates
@@ -29,7 +29,8 @@ Everything renders into real assets (thumbnail PNGs, `captions.srt`, `chapters.t
 - **uv** — Python package manager
 - **Node.js 20+** (LTS recommended)
 - **FFmpeg 6+** (in system PATH)
-- **API keys** — the Mind is fail-closed without `MINDS_BUILDER_API_KEY` + `MINDS_AGENT_ID` (scoring/memory); contact for the Minds keys or generate one. Transcription runs locally with Whisper by default (first run downloads the model, then offline). Chat trend research needs `TAVILY_API_KEY` (free key at https://tavily.com).
+- **An OpenAI-compatible LLM endpoint** — the Mind is the model you point MindsForge at, so any chat-completions API works: OpenAI, Ollama, LM Studio, vLLM, OpenRouter. Configure it with `OPENAI_BASE_URL`, `OPENAI_MODEL`, and `OPENAI_API_KEY` in `backend/.env` (see **Configure**). Scoring, experiment verdicts, adaptations, and chat are all fail-closed: without a working endpoint, those units fail with a message naming the setting to fix.
+- **Optional keys** — transcription runs locally with Whisper by default (first run downloads the model, then offline). Chat trend research needs `TAVILY_API_KEY` (free key at https://tavily.com).
 
 ## Install the tools
 
@@ -65,7 +66,31 @@ In the `backend` folder:
 cp .env.example .env     # Windows: Copy-Item .env.example .env
 ```
 
-Fill in the Mind keys and `TAVILY_API_KEY` in `.env`. Everything else has sane defaults.
+Point the backend at your endpoint. Every provider uses the same four settings:
+
+| Setting | What it is |
+|---|---|
+| `OPENAI_BASE_URL` | Base URL of the chat-completions API (default `https://api.openai.com/v1`) |
+| `OPENAI_MODEL` | Model id sent on every request — one model for all flows (default `gpt-4o-mini`) |
+| `OPENAI_API_KEY` | Key for endpoints that authenticate; leave empty for local servers that ignore it (Ollama, LM Studio, vLLM) |
+| `OPENAI_TIMEOUT_SECONDS` | Per-request timeout in seconds (default `120`) |
+
+Ready-made setups (each is a commented example in `.env.example`):
+
+| Provider | `OPENAI_BASE_URL` | `OPENAI_MODEL` | `OPENAI_API_KEY` |
+|---|---|---|---|
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | your OpenAI key |
+| Ollama (fully offline) | `http://localhost:11434/v1` | e.g. `llama3.1` | empty |
+| LM Studio (fully offline) | `http://localhost:1234/v1` | the model id in LM Studio's server log | empty |
+| OpenRouter | `https://openrouter.ai/api/v1` | e.g. `anthropic/claude-sonnet-4.5` | your OpenRouter key |
+
+For Ollama, pull the model once so it is available offline:
+
+```sh
+ollama pull llama3.1
+```
+
+Add `TAVILY_API_KEY` too if you want trend research from chat. Everything else has sane defaults. Confirm the wiring with `curl http://localhost:8000/api/v1/health` after starting the backend — the `llm` field reads `ok` when the endpoint answers, `unconfigured` when `OPENAI_BASE_URL`/`OPENAI_API_KEY` are missing, and `down` when it is configured but unreachable.
 
 ## Run
 
@@ -98,7 +123,7 @@ Open `http://localhost:3000`.
 
 ## Persistence demo (5 minutes)
 
-The Mind's memory survives backend restarts — it lives in local SQLite plus the Minds conversation thread. This scripted walkthrough proves it end to end.
+The Mind's memory survives backend restarts — it lives in local SQLite, which is the source of truth for brand rules, learned insights, adaptation history, and the chat thread. This scripted walkthrough proves it end to end.
 
 **Day 1 — build the memory (~3 min)**
 
@@ -111,8 +136,8 @@ The Mind's memory survives backend restarts — it lives in local SQLite plus th
 
 **Day 2 — prove it persisted (~2 min)**
 
-1. Restart the backend (Ctrl+C, then `uv run --module app`). SQLite and the Minds thread survive.
-2. Ask the chat *"what's my brand voice?"* and *"what did my experiments teach me?"* — the Mind answers from its thread memory.
+1. Restart the backend (Ctrl+C, then `uv run --module app`). SQLite and the chat thread survive.
+2. Ask the chat *"what's my brand voice?"* and *"what did my experiments teach me?"* — the Mind answers from the stored memory and thread.
 3. Generate a new adaptation and watch it follow your saved rule — the rule is fed into the generation prompt.
 4. Open **Memory Inspector** — the full accumulated history (rules, trends, insights, adaptations) is all there.
 
@@ -120,9 +145,11 @@ The Mind's memory survives backend restarts — it lives in local SQLite plus th
 
 | Problem | Fix |
 |---|---|
-| Job fails with `Minds is not configured` | Keys missing from `backend/.env`, or the backend wasn't restarted after adding them (Ctrl+C, then `uv run --module app`). |
+| Job fails with `The LLM backend is not configured` | `OPENAI_BASE_URL`/`OPENAI_API_KEY` are missing from `backend/.env` (or the backend wasn't restarted after adding them — Ctrl+C, then `uv run --module app`). |
+| Health endpoint reports `"llm": "unconfigured"` or `"llm": "down"` | `unconfigured` means the LLM settings are missing; `down` means they are set but `GET {OPENAI_BASE_URL}/models` doesn't answer — check the base URL, that the local server is running, and that the model id exists. |
+| Calls fail with `LLM request failed with status 401` | The endpoint requires auth and the key is wrong or empty — set `OPENAI_API_KEY` (only OpenAI/OpenRouter-style endpoints need one). |
+| Calls fail with `LLM request failed with status 404` | `OPENAI_BASE_URL` must include the API version path (`https://api.openai.com/v1`, `http://localhost:11434/v1`, …) and `OPENAI_MODEL` must be a model the endpoint serves. |
 | Trend research fails with `TAVILY_API_KEY is not configured` | Add `TAVILY_API_KEY` to `backend/.env` and restart the backend — trend research is fail-closed without it. |
-| Chat shows `Timed out waiting for a Mind reply` | The Mind took longer than 180s to answer — check the Minds keys and that the agent is responsive, then send the message again. |
 | `command not found: ffmpeg` / jobs fail with an ffmpeg error | FFmpeg not on PATH — install it per OS and open a new terminal. |
 | Port 8000 already in use | Quit the other process, or run with `PORT=8001` and point the frontend's `NEXT_PUBLIC_API_URL` at it. |
 | Video fails to download | Some hosts (e.g. YouTube) block automated downloads — use a direct `.mp4` URL instead. |
@@ -138,4 +165,8 @@ cd frontend && npm run typecheck   # TypeScript strict typecheck
 cd frontend && npm run build       # production build (includes typecheck)
 ```
 
-Spec and tickets live in `.scratch/mindsforge/` — `spec.md` plus one issue file per ticket in `issues/`.
+Spec and tickets live in `.scratch/open-source-pivot/` — `spec.md` plus one issue file per ticket in `issues/`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -1,15 +1,15 @@
 # MindsForge
 
-AI-driven creator platform that repurposes long-form content into platform-adapted short clips, A/B tests them autonomously, and grows a persistent creator memory inside a Minds agent.
+AI-driven creator platform that repurposes long-form content into platform-adapted short clips, A/B tests them autonomously, and grows a persistent creator memory in local SQLite.
 
 ## Language
 
 **Mind**:
-The creator's Minds agent. It owns the persistent memory and authors everything generated — virality scores, hooks, titles, platform features, and learned insights. It never cuts, renders, or publishes media; code does that.
+The creator's configured LLM backend — any OpenAI-compatible chat-completions endpoint (OpenAI, Ollama, LM Studio, vLLM, OpenRouter). It authors everything generated — virality scores, hooks, titles, platform features, and learned insights — and reads what it generated back out of memory. It never cuts, renders, or publishes media; code does that.
 _Avoid_: agent, model, brain
 
 **Memory**:
-The Mind's persistent knowledge, held natively in its conversation thread. The Mind recalls brand rules, learned insights, and past outcomes from its own conversation history. A local SQLite cache exists for UI rendering (Memory Inspector) but is not the source of truth.
+The Mind's persistent knowledge, held in local SQLite, which is the source of truth. The Mind recalls brand rules, learned insights, and past outcomes from that store; the chat thread lives in the same database and is rendered back into each prompt as context. Nothing about memory is vendor-hosted.
 _Avoid_: context tree, memory tree
 
 **Job**:
@@ -65,11 +65,11 @@ The section of the clip studio where adaptations are generated, their assets dow
 _Avoid_: adaptation pane, adaptation panel
 
 **Chat**:
-The creator's ongoing conversation with the Mind, held in the dedicated `mindsforge-chat` conversation; the Mind answers from the thread, its own memory, and its Tavily connection when asked.
+The creator's ongoing conversation with the Mind, held in the local `chat_messages` thread in SQLite; the Mind answers from that thread, its memory, and its Tavily connection when asked.
 _Avoid_: DM, assistant window, messenger
 
 **Brand rule**:
-A creator preference stated in chat that the Mind acknowledges and retains in its conversation thread; every subsequent generation prompt carries it via the Mind's own memory context.
+A creator preference stated in chat that the Mind acknowledges and retains in memory; every subsequent generation prompt carries it via memory context.
 _Avoid_: preference, style directive
 
 **Trend research**:
@@ -85,5 +85,5 @@ A logged record of the Mind's background work (scoring, experiment sweeps, concl
 _Avoid_: event, audit log
 
 **Mind notification**:
-A message the app posts into the chat conversation so the Mind learns of an outcome (experiment conclusion, adaptation generated) and remembers it natively.
+A message the app posts into the chat conversation so the Mind reads back an outcome (experiment conclusion, adaptation generated) as context on its next turn.
 _Avoid_: alert, push, system message

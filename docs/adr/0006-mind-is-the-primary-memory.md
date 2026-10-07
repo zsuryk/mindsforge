@@ -1,4 +1,6 @@
-# Mind is the primary memory
+# Mind is the primary memory (superseded)
+
+*Superseded: no remote Mind owns memory. Local SQLite is the source of truth for brand rules, adaptation history, experiment insights, and the chat thread, and the configured OpenAI-compatible model reads that state back as prompt context. Kept for history — do not implement from this ADR.*
 
 The SQLite sidecar was a practical stopgap: it persisted brand rules, adaptation history, and experiment insights in a structured key/value store and injected them as text blocks into generation prompts. But this architecture duplicates what the Mind does natively — and for a hackathon organized by Minds, judges expect to see the Mind itself own and drive memory.
 

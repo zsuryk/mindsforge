@@ -4,9 +4,9 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done (fd57d6f)
 
-- [ ] `cp .env.example .env` + documented values yields a working backend against a local OpenAI-compatible server
-- [ ] README setup steps verified start-to-finish without Minds credentials
-- [ ] `npm install` succeeds using only the public registry
-- [ ] LICENSE file present at root
+- [x] `cp .env.example .env` + documented values yields a working backend against a local OpenAI-compatible server
+- [x] README setup steps verified start-to-finish without Minds credentials
+- [x] `npm install` succeeds using only the public registry
+- [x] LICENSE file present at root
